@@ -1,0 +1,14 @@
+---
+# tasks file for virtualbox
+- name: Add apt packages
+  apt:
+    pkg:
+      - software-properties-common
+      - virtualbox
+      - virtualbox-guest-additions-iso
+      - virtualbox-dkms
+      - linux-headers-generic
+    state: present
+    update_cache: yes
+  notify: 
+    - reconfigure virtualbox-dkms

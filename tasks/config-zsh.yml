@@ -1,0 +1,69 @@
+- name: Set zsh as default shell
+  user:
+    name: {{ ansible_ssh_user }}
+    shell: "/usr/bin/zsh"
+
+- name: Install OMZ
+  shell:
+    cmd: curl -L 'https://raw.github.com/robbyrussell/oh-my-zsh/master/tools/install.sh' | sh
+
+- name: Create fonts directory
+  become: true
+  file:
+    path: /usr/share/fonts/TTF
+    mode: '0755'
+    state: directory
+
+- name: Copy powerlevel10k recommanded fonts
+  become: true
+  copy:
+    src: "fonts/{{ item }}"
+    dest: "/usr/share/fonts/TTF/{{ item }}"
+    mode: '0644'
+  loop:
+    - MesloLGS NF Bold Italic.ttf
+    - MesloLGS NF Bold.ttf
+    - MesloLGS NF Italic.ttf
+    - MesloLGS NF Regular.ttf
+
+- name: Install powerlevel10k.
+  git:
+    repo: "https://github.com/romkatv/powerlevel10k.git"
+    dest: "~/.oh-my-zsh/custom/themes/powerlevel10k"
+    depth: '1'
+    update: no
+    version: 'master'
+
+- name: Add powerlevel10k to zsh plugin
+  lineinfile:
+    path: "~/.zshrc"
+    regexp: "'^ZSH_THEME='"
+    line: 'ZSH_THEME="powerlevel10k/powerlevel10k"'
+    mode: '0644'
+    create: yes
+
+- name: Enable powerlevel10 instant prompt
+  blockinfile:
+    path: "~/.zshrc"
+    block: |
+      if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+        source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+      fi
+    insertbefore: BOF
+    marker_begin: "BEGIN P10K INSTANT PROMPT"
+    marker_end: "END P10K INSTANT PROMPT"
+
+- name: Enable powerlevel10k config file
+  blockinfile:
+    path: "~/.zshrc"
+    block: |
+      [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+    insertafter: EOF
+    marker_begin: "BEGIN P10K CONFIG FILE"
+    marker_end: "END P10K CONFIG FILE"
+
+- name: Setup powerlevel10k
+  template:
+    src: "p10k-rainbow.zsh.j2"
+    dest: '~/.p10k.zsh'
+    mode: '0644'

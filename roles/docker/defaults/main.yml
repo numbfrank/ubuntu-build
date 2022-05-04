@@ -1,0 +1,7 @@
+---
+# defaults file for docker
+
+# Install docker for the following linux users
+# Default: the linux user running Ansible
+docker_users:
+  - "{{ ansible_user_id }}"

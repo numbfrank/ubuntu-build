@@ -1,0 +1,13 @@
+[legacy]                                                                                                                                                                                              
+confirm-close=false                                                                                                                                                                                   
+theme-variant='system'                                                                                                                                                                                
+                                                                                                                                                                                                      
+[legacy/profiles:]                                                                                                                                                                                    
+default='635bae9b-657c-429b-b06b-3accf9fce948'                                                                                                                                                        
+list=['b1dcc9dd-5262-4d8d-a863-c897e6d979b9', '635bae9b-657c-429b-b06b-3accf9fce948']
+
+[legacy/profiles:/:635bae9b-657c-429b-b06b-3accf9fce948]
+audible-bell=false
+font='MesloLGS NF 11'
+scrollback-lines=100000
+use-system-font=false

@@ -1,0 +1,4 @@
+---
+# defaults file for conky
+conky_users:
+  - "{{ ansible_user_id }}"

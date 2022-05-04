@@ -1,0 +1,38 @@
+---
+# tasks file for snap_apps
+- name: Install snaps
+  community.general.snap:
+    name:
+      - bitwarden
+      - vlc
+      - libreoffice
+      - slack
+      - htop
+      - gimp
+      - spotify
+      - beekeeper-studio
+      - snap-store
+      - discord
+      - signal-desktop
+      - remmina
+      - zoom-client
+      
+- name: Install classic snaps
+  community.general.snap:
+    name:
+      - code
+      - powershell
+      - clion
+      - pycharm-community
+      - go
+    classic: yes
+    
+- name: Install beta snaps
+  community.general.snap:
+    name: brave
+    channel: beta
+
+- name: Install edge snaps
+  community.general.snap:
+    name: sweeper
+    channel: edge

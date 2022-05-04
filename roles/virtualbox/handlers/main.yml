@@ -1,0 +1,4 @@
+---
+
+- name: reconfigure virtualbox-dkms
+  command: sudo dpkg-reconfigure -f noninteractive virtualbox-dkms
