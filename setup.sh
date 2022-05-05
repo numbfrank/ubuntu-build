@@ -11,6 +11,9 @@ if ! hash ansible >/dev/null 2>&1; then
     echo "Installing Ansible..."
     sudo apt-get update
     sudo apt-get install software-properties-common ansible ansible-core git python-apt -y
+    #### This seems to be more stable but needs testing more ###
+    # python3 -m pip install --upgrade ansible
+    #####
 else
     echo "Ansible already installed"
 fi
