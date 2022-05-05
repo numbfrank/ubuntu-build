@@ -4,6 +4,7 @@
   apt:
     pkg:
       - conky-all
+      - lm-sensors
     state: present
     update_cache: true
 
@@ -26,3 +27,6 @@
       OnlyShowIn=GNOME;
       X-GNOME-Autostart-Phase=Application
     create: yes
+
+- name: Configure lm-sensors
+  command: sensors-detect --auto
