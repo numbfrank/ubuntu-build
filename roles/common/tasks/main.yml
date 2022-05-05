@@ -28,10 +28,15 @@
     pkg:
       #- ansible
       #- ansible-core
+      - chrome-gnome-shell
       - curl
+      - dconf-editor
       - git
       - git-lfs
-      - gnupg 
+      - gnome-shell-extensions
+      - gnome-tweaks
+      - gnupg
+      - locate
       - openssh-server
       - packer
       - python3
