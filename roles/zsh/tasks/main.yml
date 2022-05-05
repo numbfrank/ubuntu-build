@@ -129,3 +129,11 @@
     create: yes
   become_user: "{{ item }}"
   with_items: "{{ p10k_users }}"
+
+- name: tidy up
+  file: 
+    path: "{{ item }}"
+    state: ansent
+  with_items: 
+    - ~/zsh_profile.txt
+    - ~/omz-install.sh
