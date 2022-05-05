@@ -2,9 +2,9 @@
 
 - hosts: vm_all
   roles:
-  #  - { role: common, become: true }
-   # - { role: zsh }
+    - { role: common, become: true }
+    - { role: zsh }
    # - { role: docker, become: true }
-   # - { role: conky, become: true }
+    - { role: conky, become: true }
    # - { role: snap_apps, become: true }
-    - { role: virtualbox, become: true }
+   # - { role: virtualbox, become: true }
