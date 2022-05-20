@@ -28,6 +28,7 @@
     pkg:
       #- ansible
       #- ansible-core
+      - baobab
       - chrome-gnome-shell
       - curl
       - dconf-editor
