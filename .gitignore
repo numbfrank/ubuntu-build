@@ -1,0 +1,21 @@
+# Editor artifacts
+*.swp
+*~
+.*.swp
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.code-workspace
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+
+# Local overrides (not committed)
+local/
+*.local.sh
