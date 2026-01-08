@@ -68,6 +68,25 @@ cmd_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+# Helper: safely add GPG key (avoids overwriting existing)
+add_gpg_key() {
+  local url="$1"
+  local keyring="$2"
+  if [[ ! -f "$keyring" ]]; then
+    curl -fsSL "$url" | sudo gpg --dearmor --yes -o "$keyring"
+    sudo chmod a+r "$keyring"
+  fi
+}
+
+# Helper: add apt repository
+add_apt_repo() {
+  local list_file="$1"
+  local repo_line="$2"
+  if [[ ! -f "$list_file" ]]; then
+    echo "$repo_line" | sudo tee "$list_file" >/dev/null
+  fi
+}
+
 install_core_packages() {
   log "Installing core dev packages"
   sudo apt-get install -y \
@@ -87,6 +106,9 @@ install_core_packages() {
     ripgrep \
     fd-find \
     bat \
+    fzf \
+    htop \
+    tree \
     unzip \
     vim
 
@@ -100,36 +122,62 @@ setup_git_lfs() {
   fi
 }
 
-ensure_hashicorp_repo() {
-  if [[ ! -f /etc/apt/sources.list.d/hashicorp.list ]]; then
-    curl -fsSL https://apt.releases.hashicorp.com/gpg \
-      | sudo gpg --dearmor -o /usr/share/keyrings/hashicorp.gpg
-
-    echo "deb [signed-by=/usr/share/keyrings/hashicorp.gpg] https://apt.releases.hashicorp.com ${DIST_CODENAME} main" \
-      | sudo tee /etc/apt/sources.list.d/hashicorp.list >/dev/null
+install_or_update_delta() {
+  if [[ "$UPDATE_ONLY" -eq 1 ]] && ! cmd_exists delta; then
+    log "git-delta not installed; skipping (update-only mode)"
+    return 0
   fi
+
+  log "Installing or updating git-delta"
+  local version="0.17.0"
+  local arch="amd64"
+  local deb_url="https://github.com/dandavison/delta/releases/download/${version}/git-delta_${version}_${arch}.deb"
+  local tmp_deb="/tmp/git-delta.deb"
+  
+  curl -fsSL "$deb_url" -o "$tmp_deb"
+  sudo dpkg -i "$tmp_deb" || sudo apt-get install -f -y
+  rm -f "$tmp_deb"
+}
+
+install_or_update_zoxide() {
+  if [[ "$UPDATE_ONLY" -eq 1 ]] && ! cmd_exists zoxide; then
+    log "zoxide not installed; skipping (update-only mode)"
+    return 0
+  fi
+
+  log "Installing or updating zoxide"
+  curl -fsSL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | sudo sh
+}
+
+ensure_hashicorp_repo() {
+  add_gpg_key "https://apt.releases.hashicorp.com/gpg" "/usr/share/keyrings/hashicorp.gpg"
+  add_apt_repo "/etc/apt/sources.list.d/hashicorp.list" \
+    "deb [signed-by=/usr/share/keyrings/hashicorp.gpg] https://apt.releases.hashicorp.com ${DIST_CODENAME} main"
 }
 
 ensure_docker_repo() {
-  if [[ ! -f /etc/apt/sources.list.d/docker.list ]]; then
-    sudo install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/${DIST_ID}/gpg \
-      | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-    sudo chmod a+r /etc/apt/keyrings/docker.gpg
-
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${DIST_ID} ${DIST_CODENAME} stable" \
-      | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
-  fi
+  sudo install -m 0755 -d /etc/apt/keyrings
+  add_gpg_key "https://download.docker.com/linux/${DIST_ID}/gpg" "/etc/apt/keyrings/docker.gpg"
+  add_apt_repo "/etc/apt/sources.list.d/docker.list" \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${DIST_ID} ${DIST_CODENAME} stable"
 }
 
 ensure_vscode_repo() {
-  if [[ ! -f /etc/apt/sources.list.d/vscode.list ]]; then
-    curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
-      | sudo gpg --dearmor -o /usr/share/keyrings/vscode.gpg
+  add_gpg_key "https://packages.microsoft.com/keys/microsoft.asc" "/usr/share/keyrings/vscode.gpg"
+  add_apt_repo "/etc/apt/sources.list.d/vscode.list" \
+    "deb [signed-by=/usr/share/keyrings/vscode.gpg] https://packages.microsoft.com/repos/code stable main"
+}
 
-    echo "deb [signed-by=/usr/share/keyrings/vscode.gpg] https://packages.microsoft.com/repos/code stable main" \
-      | sudo tee /etc/apt/sources.list.d/vscode.list >/dev/null
-  fi
+ensure_github_cli_repo() {
+  add_gpg_key "https://cli.github.com/packages/githubcli-archive-keyring.gpg" "/usr/share/keyrings/githubcli-archive-keyring.gpg"
+  add_apt_repo "/etc/apt/sources.list.d/github-cli.list" \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main"
+}
+
+ensure_chrome_repo() {
+  add_gpg_key "https://dl.google.com/linux/linux_signing_key.pub" "/usr/share/keyrings/google-chrome.gpg"
+  add_apt_repo "/etc/apt/sources.list.d/google-chrome.list" \
+    "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main"
 }
 
 install_or_update_starship() {
@@ -216,25 +264,57 @@ install_or_update_vscode() {
   sudo apt-get install -y code
 }
 
+install_or_update_github_cli() {
+  if [[ "$UPDATE_ONLY" -eq 1 ]] && ! pkg_installed gh; then
+    log "GitHub CLI not installed; skipping (update-only mode)"
+    return 0
+  fi
+
+  log "Installing or updating GitHub CLI"
+  ensure_github_cli_repo
+  apt_update
+  sudo apt-get install -y gh
+}
+
+install_or_update_chrome() {
+  if [[ "$UPDATE_ONLY" -eq 1 ]] && ! pkg_installed google-chrome-stable; then
+    log "Google Chrome not installed; skipping (update-only mode)"
+    return 0
+  fi
+
+  log "Installing or updating Google Chrome"
+  ensure_chrome_repo
+  apt_update
+  sudo apt-get install -y google-chrome-stable
+}
+
 do_install_all() {
   apt_update
   install_core_packages
   setup_git_lfs
+  install_or_update_delta
+  install_or_update_zoxide
   install_or_update_starship
   install_or_update_docker
   install_or_update_hashicorp
   install_or_update_awscli
   install_or_update_vscode
+  install_or_update_github_cli
+  install_or_update_chrome
 }
 
 do_update_only() {
   apt_update
   apt_upgrade
+  install_or_update_delta
+  install_or_update_zoxide
   install_or_update_starship
   install_or_update_docker
   install_or_update_hashicorp
   install_or_update_awscli
   install_or_update_vscode
+  install_or_update_github_cli
+  install_or_update_chrome
   setup_git_lfs
 }
 

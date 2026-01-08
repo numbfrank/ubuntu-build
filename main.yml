@@ -1,5 +1,0 @@
----
-
-- import_playbook: laptop.yml
-
-#- import_playbook: vm.yml

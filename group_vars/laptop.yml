@@ -1,5 +1,0 @@
-ansible_user: admin
-ansible_password: "*******"
-ansible_sudo_pass: "******"
-ansible_port: 22
-ansible_connection: ssh

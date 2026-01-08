@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Ubuntu/Debian image cleanup script
-# هدف: make the box safe/clean for imaging (golden image/template).
+# Purpose: make the box safe/clean for imaging (golden image/template).
 #
 # What it does:
 # - apt clean + autoremove
@@ -14,7 +14,7 @@ set -euo pipefail
 # - optionally runs cloud-init clean (if installed)
 #
 # Usage:
-#   sudo bash image-cleanup.sh
+#   sudo bash setup-clean.sh
 #
 # Optional flags:
 #   --keep-ssh-host-keys     Do not remove /etc/ssh/ssh_host_*
@@ -23,6 +23,7 @@ set -euo pipefail
 #   --keep-user-history      Do not remove shell histories
 #   --keep-caches            Do not remove user caches
 #   --cloud-init-clean       Run cloud-init clean (only if cloud-init present)
+#   --no-shutdown            Do not shutdown after cleanup
 
 KEEP_SSH_HOST_KEYS=0
 KEEP_MACHINE_ID=0
@@ -30,6 +31,7 @@ KEEP_LOGS=0
 KEEP_USER_HISTORY=0
 KEEP_CACHES=0
 DO_CLOUD_INIT_CLEAN=0
+NO_SHUTDOWN=0
 
 log() { printf "\n[%s] %s\n" "$(date +'%F %T')" "$*"; }
 
@@ -42,6 +44,7 @@ parse_args() {
       --keep-user-history) KEEP_USER_HISTORY=1; shift ;;
       --keep-caches) KEEP_CACHES=1; shift ;;
       --cloud-init-clean) DO_CLOUD_INIT_CLEAN=1; shift ;;
+      --no-shutdown) NO_SHUTDOWN=1; shift ;;
       -h|--help)
         sed -n '1,220p' "$0"
         exit 0
@@ -196,7 +199,13 @@ main() {
 
   log "Image cleanup complete"
   log "Recommended: power off now and capture the image (do not reboot if you removed SSH host keys and machine-id)."
-  log "Shutting down in 10 sec...(ctrl-c to abort)"
+  
+  if [[ "$NO_SHUTDOWN" -eq 1 ]]; then
+    log "Skipping automatic shutdown (--no-shutdown)"
+    exit 0
+  fi
+  
+  log "Shutting down in 10 sec... (Ctrl-C to abort)"
   sleep 10
   shutdown -h now
 }

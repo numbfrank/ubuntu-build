@@ -1,5 +1,0 @@
----
-# handlers file for common
-
-- name: Update Grub2 config file ubuntu
-  shell: /usr/sbin/update-grub
