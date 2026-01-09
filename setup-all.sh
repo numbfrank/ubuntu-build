@@ -578,24 +578,26 @@ EOF
   fi
 }
 
-install_emoji_fonts() {
-  log "Installing emoji font support"
-  apt-get install -y fonts-noto-color-emoji fonts-noto-emoji
+install_nerd_fonts() {
+  log "Installing Hack Nerd Font"
   
-  tee /etc/fonts/local.conf >/dev/null <<'EOF'
-<?xml version="1.0"?>
-<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
-<fontconfig>
-  <alias>
-    <family>sans-serif</family>
-    <prefer>
-      <family>Noto Sans</family>
-      <family>Noto Color Emoji</family>
-    </prefer>
-  </alias>
-</fontconfig>
-EOF
+  local font_dir="/usr/share/fonts/truetype/hack-nerd"
+  if [[ -d "$font_dir" ]]; then
+    log "Hack Nerd Font already installed"
+    return 0
+  fi
+  
+  local version="3.3.0"
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  
+  curl -fsSL "https://github.com/ryanoasis/nerd-fonts/releases/download/v${version}/Hack.zip" -o "$tmp_dir/Hack.zip"
+  mkdir -p "$font_dir"
+  unzip -q "$tmp_dir/Hack.zip" -d "$font_dir"
+  rm -rf "$tmp_dir"
+  
   fc-cache -f -v >/dev/null 2>&1 || true
+  log "Hack Nerd Font installed"
 }
 
 install_ubuntu_desktop() {
@@ -1013,7 +1015,7 @@ do_env() {
   ensure_ssh_client
   regenerate_ssh_host_keys
   set_uk_locale
-  install_emoji_fonts
+  install_nerd_fonts
   
   if [[ "$INSTALL_GUI" -eq 1 ]]; then
     install_ubuntu_desktop
