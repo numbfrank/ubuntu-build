@@ -19,6 +19,7 @@ set -euo pipefail
 #   --no-desktop       Skip desktop-specific settings
 #   --no-user-tweaks   Skip per-user configurations
 #   --no-dev-user      Don't create the 'dev' user
+#   --gui              Install Ubuntu Desktop GUI (for headless VMs)
 #   --no-shutdown      Don't shutdown after clean
 #
 # Creates 'dev' user by default:
@@ -28,6 +29,7 @@ set -euo pipefail
 #
 # Examples:
 #   curl ... | sudo bash                        # Full setup (dev + env)
+#   curl ... | sudo bash -s -- --gui            # Full setup with GUI
 #   curl ... | sudo bash -s -- dev              # Dev tools only
 #   curl ... | sudo bash -s -- env --no-desktop # Headless server config
 #   curl ... | sudo bash -s -- update           # Update existing tools

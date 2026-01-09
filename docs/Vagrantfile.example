@@ -62,6 +62,9 @@ Vagrant.configure("2") do |config|
     vmware.vmx["memsize"] = "4096"
     vmware.vmx["numvcpus"] = "2"
     vmware.vmx["vhv.enable"] = "TRUE"  # Nested virtualization
+    
+    # Always show VM in VMware Workstation
+    vmware.gui = true
   end
   
   # Libvirt provider settings (Linux KVM)
@@ -75,23 +78,28 @@ Vagrant.configure("2") do |config|
   # Provisioning with ubuntu-build bootstrap
   # ==========================================================================
   
-  # Option 1: Direct bootstrap from GitHub (recommended)
+  # Option 1: Direct bootstrap from GitHub (headless, no GUI)
   config.vm.provision "shell", inline: <<-SHELL
     echo "==> Provisioning with ubuntu-build..."
     curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/bootstrap.sh | bash
   SHELL
   
-  # Option 2: Headless server (no desktop settings)
+  # Option 2: With Ubuntu Desktop GUI (set vmware.gui = true above)
+  # config.vm.provision "shell", inline: <<-SHELL
+  #   curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/bootstrap.sh | bash -s -- --gui
+  # SHELL
+  
+  # Option 3: Headless server (no desktop settings at all)
   # config.vm.provision "shell", inline: <<-SHELL
   #   curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/bootstrap.sh | bash -s -- --no-desktop
   # SHELL
   
-  # Option 3: Dev tools only (skip env configuration)
+  # Option 4: Dev tools only (skip env configuration)
   # config.vm.provision "shell", inline: <<-SHELL
   #   curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/bootstrap.sh | bash -s -- dev
   # SHELL
   
-  # Option 4: Local provisioning (if you have the repo cloned)
+  # Option 5: Local provisioning (if you have the repo cloned)
   # config.vm.provision "shell", inline: <<-SHELL
   #   cd /vagrant && sudo ./setup.sh
   # SHELL

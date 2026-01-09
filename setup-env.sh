@@ -15,6 +15,7 @@ set -euo pipefail
 #   --no-desktop      Do not apply lid-close suspend disable
 #   --no-user-tweaks  Do not apply per-user QoL tweaks
 #   --no-dev-user     Do not create the 'dev' user
+#   --gui             Install Ubuntu Desktop GUI (for headless VMs)
 #
 # By default, creates a 'dev' user with:
 #   - Password: dev
@@ -24,6 +25,7 @@ set -euo pipefail
 DO_DESKTOP=1
 DO_USER_TWEAKS=1
 CREATE_DEV_USER=1
+INSTALL_GUI=0
 TARGET_USER="${SUDO_USER:-$USER}"
 
 log() { printf "\n[%s] %s\n" "$(date +'%F %T')" "$*"; }
@@ -34,6 +36,7 @@ parse_args() {
       --no-desktop) DO_DESKTOP=0; shift ;;
       --no-user-tweaks) DO_USER_TWEAKS=0; shift ;;
       --no-dev-user) CREATE_DEV_USER=0; shift ;;
+      --gui) INSTALL_GUI=1; shift ;;
       --user) TARGET_USER="$2"; shift 2 ;;
       -h|--help)
         sed -n '1,180p' "$0"
@@ -254,6 +257,43 @@ EOF
   local env_file="/home/${TARGET_USER}/.config/environment.d/ssh-agent.conf"
   sudo -u "$TARGET_USER" mkdir -p "/home/${TARGET_USER}/.config/environment.d"
   echo "SSH_AUTH_SOCK=\"\${XDG_RUNTIME_DIR}/ssh-agent.socket\"" | sudo -u "$TARGET_USER" tee "$env_file" >/dev/null
+}
+
+install_ubuntu_desktop() {
+  log "Installing Ubuntu Desktop GUI"
+  
+  # Detect distro for appropriate desktop package
+  # shellcheck disable=SC1091
+  . /etc/os-release
+  
+  case "${ID:-}" in
+    ubuntu)
+      log "Installing ubuntu-desktop (this may take a while...)"
+      sudo apt-get update -y
+      sudo DEBIAN_FRONTEND=noninteractive apt-get install -y ubuntu-desktop
+      ;;
+    debian)
+      log "Installing Debian GNOME desktop (this may take a while...)"
+      sudo apt-get update -y
+      sudo DEBIAN_FRONTEND=noninteractive apt-get install -y task-gnome-desktop
+      ;;
+    *)
+      log "Unsupported distro for GUI install: ${ID:-unknown}"
+      return 1
+      ;;
+  esac
+  
+  # Enable graphical target (boot to GUI)
+  sudo systemctl set-default graphical.target
+  
+  # Enable GDM display manager
+  if command -v gdm3 >/dev/null 2>&1; then
+    sudo systemctl enable gdm3 || true
+  elif command -v gdm >/dev/null 2>&1; then
+    sudo systemctl enable gdm || true
+  fi
+  
+  log "Ubuntu Desktop installed - reboot to start GUI"
 }
 
 disable_lid_close_suspend() {
@@ -711,6 +751,11 @@ main() {
   regenerate_ssh_host_keys
   set_uk_locale
   install_emoji_fonts
+
+  # Install Ubuntu Desktop GUI if requested
+  if [[ "$INSTALL_GUI" -eq 1 ]]; then
+    install_ubuntu_desktop
+  fi
 
   # Create dev user (enabled by default)
   if [[ "$CREATE_DEV_USER" -eq 1 ]]; then
