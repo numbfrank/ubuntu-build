@@ -5,10 +5,14 @@
 # Provisions a fresh Ubuntu VM with the dev box setup
 #
 # Usage:
-#   vagrant up          # Create and provision
-#   vagrant ssh         # Connect to VM
-#   vagrant provision   # Re-run provisioning
-#   vagrant destroy     # Remove VM
+#   vagrant up                      # Create and provision (uses VMware)
+#   vagrant up --provider=virtualbox  # Use VirtualBox instead
+#   vagrant ssh                     # Connect to VM
+#   vagrant provision               # Re-run provisioning
+#   vagrant destroy                 # Remove VM
+
+# Set VMware as the default provider
+ENV['VAGRANT_DEFAULT_PROVIDER'] = 'vmware_desktop'
 
 Vagrant.configure("2") do |config|
   # Ubuntu 24.04 LTS (Noble)
