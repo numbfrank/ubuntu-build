@@ -275,6 +275,11 @@ apt_update() {
   apt-get update -y
 }
 
+apt_dist_upgrade() {
+  log "Performing full system upgrade (dist-upgrade)"
+  DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y
+}
+
 apt_upgrade() {
   log "Upgrading system packages"
   apt-get upgrade -y
@@ -1061,6 +1066,7 @@ user_cache_cleanup() {
 do_dev() {
   log "=== Installing Development Tools ==="
   apt_update
+  apt_dist_upgrade
   
   if [[ "$UPDATE_ONLY" -eq 1 ]]; then
     apt_upgrade
