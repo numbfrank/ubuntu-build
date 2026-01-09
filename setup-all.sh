@@ -742,6 +742,10 @@ apply_dev_user_desktop_settings() {
   mkdir -p /home/dev/.config
   echo "yes" | tee /home/dev/.config/gnome-initial-setup-done >/dev/null
   
+  # Download wallpaper
+  mkdir -p /home/dev/Pictures
+  curl -fsSL "$REPO_RAW_URL/files/dev-background.png" -o /home/dev/Pictures/dev-background.png || true
+  
   # Create autostart script that runs on first login to set dock favorites
   # This is the most reliable approach because gsettings needs a running session
   mkdir -p /home/dev/.config/autostart
@@ -757,7 +761,7 @@ EOF
 
   tee /home/dev/.config/autostart/dev-setup-dock.sh >/dev/null <<'SCRIPT'
 #!/bin/bash
-# One-time dock favorites setup - runs on first login then deletes itself
+# One-time desktop setup - runs on first login then deletes itself
 
 # Set dock favorites
 gsettings set org.gnome.shell favorite-apps \
@@ -765,6 +769,13 @@ gsettings set org.gnome.shell favorite-apps \
 
 # Disable welcome dialog
 gsettings set org.gnome.shell welcome-dialog-last-shown-version '99.0'
+
+# Set wallpaper
+if [[ -f /home/dev/Pictures/dev-background.png ]]; then
+  gsettings set org.gnome.desktop.background picture-uri "file:///home/dev/Pictures/dev-background.png"
+  gsettings set org.gnome.desktop.background picture-uri-dark "file:///home/dev/Pictures/dev-background.png"
+  gsettings set org.gnome.desktop.background picture-options 'zoom'
+fi
 
 # Disable screen lock and power settings
 gsettings set org.gnome.desktop.screensaver lock-enabled false 2>/dev/null || true
