@@ -954,7 +954,13 @@ setup_shell_integrations() {
   read -r -d '' fzf_block <<'EOF' || true
 # FZF shell integration
 if command -v fzf >/dev/null 2>&1; then
-  eval "$(fzf --bash)" 2>/dev/null || true
+  # Try new --bash flag first, fall back to sourcing scripts
+  if fzf --bash &>/dev/null; then
+    eval "$(fzf --bash)"
+  elif [[ -f /usr/share/doc/fzf/examples/key-bindings.bash ]]; then
+    source /usr/share/doc/fzf/examples/key-bindings.bash
+    source /usr/share/doc/fzf/examples/completion.bash 2>/dev/null || true
+  fi
   export FZF_DEFAULT_OPTS="--height 40% --layout=reverse --border"
   export FZF_DEFAULT_COMMAND="fd --type f --hidden --follow --exclude .git"
 fi
@@ -1135,8 +1141,16 @@ do_env() {
   set_uk_locale
   install_nerd_fonts
   
+  # Auto-detect if desktop is already installed
+  local has_desktop=0
+  if pkg_installed ubuntu-desktop || pkg_installed gnome-shell || pkg_installed task-gnome-desktop; then
+    has_desktop=1
+    log "Desktop environment detected"
+  fi
+  
   if [[ "$INSTALL_GUI" -eq 1 ]]; then
     install_ubuntu_desktop
+    has_desktop=1
   fi
   
   if [[ "$CREATE_DEV_USER" -eq 1 ]]; then
@@ -1144,11 +1158,16 @@ do_env() {
   fi
   
   # Apply desktop settings for dev user AFTER user is created
-  if [[ "$INSTALL_GUI" -eq 1 ]] && [[ "$CREATE_DEV_USER" -eq 1 ]]; then
+  # Run if --gui passed OR if desktop was auto-detected
+  if [[ "$has_desktop" -eq 1 ]] && [[ "$CREATE_DEV_USER" -eq 1 ]]; then
     apply_dev_user_desktop_settings
   fi
   
-  if [[ "$DO_DESKTOP" -eq 1 ]]; then
+  # Apply desktop tweaks if desktop exists (--gui or auto-detected)
+  if [[ "$has_desktop" -eq 1 ]] && [[ "$DO_DESKTOP" -eq 1 ]]; then
+    # Remove gnome-initial-setup
+    apt-get remove --autoremove -y gnome-initial-setup gnome-tour 2>/dev/null || true
+    
     disable_lid_close_suspend
     disable_screen_lock
     disable_browser_first_run
