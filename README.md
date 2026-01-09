@@ -4,17 +4,21 @@ Bootstrap scripts for setting up Ubuntu/Debian development VMs with a modern eng
 
 ## Quick Start (Fresh Ubuntu Install)
 
-Run this one-liner on a fresh Ubuntu instance:
-
+**All-in-One Script (Recommended):**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/bootstrap.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/setup-all.sh | sudo bash
+```
+
+**With Ubuntu Desktop GUI:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/setup-all.sh | sudo bash -s -- --gui
 ```
 
 This will:
-1. Install git and clone the repository
-2. Install all development tools (Docker, Terraform, VS Code, etc.)
-3. Create a `dev` user with passwordless sudo
-4. Configure the system and apply all shell customizations
+1. Install all development tools (Docker, Terraform, VS Code, etc.)
+2. Create a `dev` user with passwordless sudo
+3. Configure the system and apply all shell customizations
+4. (Optional) Install Ubuntu Desktop with dev as default user
 
 ---
 
@@ -65,42 +69,27 @@ The `dev` user has:
 
 ---
 
-## Bootstrap Options
+## Options
 
 ```bash
-# Full setup (default) - creates dev user
-curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/bootstrap.sh | sudo bash
+# Full setup with GUI desktop (creates dev user, default GDM user)
+curl -fsSL ... | sudo bash -s -- --gui
 
-# Headless server (no desktop settings)
-curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/bootstrap.sh | sudo bash -s -- --no-desktop
-
-# Dev tools only (no system config)
-curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/bootstrap.sh | sudo bash -s -- dev
+# Headless server (no desktop, creates dev user)
+curl -fsSL ... | sudo bash
 
 # Skip dev user creation
-curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/bootstrap.sh | sudo bash -s -- --no-dev-user
+curl -fsSL ... | sudo bash -s -- --no-dev-user
+
+# Dev tools only (no system config)
+curl -fsSL ... | sudo bash -s -- dev
+
+# Full setup without desktop settings
+curl -fsSL ... | sudo bash -s -- --no-desktop
+
+# Prepare for imaging after setup
+curl -fsSL ... | sudo bash -s -- clean
 ```
-
----
-
-## Manual Setup (If Already Cloned)
-
-```bash
-# Full setup (install tools + configure system + create dev user)
-sudo ./setup.sh
-
-# Or run individual components
-sudo ./setup.sh dev      # Install dev tools only
-sudo ./setup.sh env      # Configure system + create dev user
-sudo ./setup.sh update   # Update existing tools
-sudo ./setup.sh clean    # Prepare for imaging
-```
-
----
-
-## Controller Script: `setup.sh`
-
-The main entry point that orchestrates all setup scripts.
 
 **Commands:**
 | Command | Description |
@@ -111,32 +100,50 @@ The main entry point that orchestrates all setup scripts.
 | `clean` | Prepare system for imaging |
 | `update` | Update all installed tools |
 
-**Options:**
-| Option | Description |
-|--------|-------------|
+**Flags:**
+| Flag | Description |
+|------|-------------|
+| `--gui` | Install Ubuntu Desktop / GNOME |
 | `--no-desktop` | Skip desktop-specific settings |
 | `--no-user-tweaks` | Skip per-user configurations |
 | `--no-dev-user` | Don't create the dev user |
 | `--no-shutdown` | Don't shutdown after clean |
-| `--dry-run` | Show what would run without executing |
-
-**Examples:**
-```bash
-sudo ./setup.sh                      # Full setup (creates dev user)
-sudo ./setup.sh --no-dev-user        # Full setup without dev user
-sudo ./setup.sh dev                  # Install tools only
-sudo ./setup.sh env --no-desktop     # Configure headless server
-sudo ./setup.sh update               # Update existing tools
-sudo ./setup.sh clean --no-shutdown  # Prepare for imaging (no auto-shutdown)
-```
+| `--dry-run` | Show what would run |
 
 ---
 
-## Scripts
+## Alternative: Modular Scripts
 
-### `setup-dev.sh` - Development Tools Installation
+If you prefer granular control, you can clone the repo and use the modular scripts:
 
-Installs a complete development environment:
+```bash
+git clone https://github.com/numbfrank/ubuntu-build.git
+cd ubuntu-build
+
+# Full setup (install tools + configure system + create dev user)
+sudo ./setup.sh
+
+# Or run individual components
+sudo ./setup.sh dev      # Install dev tools only
+sudo ./setup.sh env      # Configure system + create dev user
+sudo ./setup.sh clean    # Prepare for imaging
+
+# With options
+sudo ./setup.sh --gui              # Include desktop installation
+sudo ./setup.sh env --no-dev-user  # Configure without dev user
+```
+
+The modular approach uses:
+- `setup.sh` — Controller script
+- `setup-dev.sh` — Tool installation
+- `setup-env.sh` — System configuration
+- `setup-clean.sh` — Image cleanup
+
+---
+
+## What Gets Installed
+
+### Development Tools
 
 | Category | Tools |
 |----------|-------|
@@ -151,9 +158,9 @@ Installs a complete development environment:
 | **Navigation** | zoxide |
 | **Browser** | Google Chrome |
 
-### `setup-env.sh` - System Configuration
+### System Configuration
 
-Applies system settings and creates the `dev` user:
+### System Configuration
 
 **System Settings:**
 - NTP time sync
@@ -163,16 +170,19 @@ Applies system settings and creates the `dev` user:
 - Capped journald disk usage
 - UK locale, keyboard, and timezone
 
+**Desktop Settings (with `--gui`):**
+- Installs Ubuntu Desktop / GNOME
+- Dock favorites: Terminal, VS Code, Chrome, Firefox, Settings
+- Disables lid-close suspend
+- Disables screen lock/timeout
+- Disables browser first-run prompts
+- Sets `dev` as default GDM login user
+
 **Dev User (created by default):**
 - Username: `dev`, Password: `dev`
 - Passwordless sudo
 - Member of `docker` group
 - All aliases and integrations pre-configured
-
-**Desktop Settings:** *(disable with `--no-desktop`)*
-- Disable lid-close suspend
-- Disable screen lock/timeout
-- Disable browser first-run prompts
 
 **User Tweaks (applied to both invoking user and dev):**
 - SSH key generation (Ed25519 + RSA)
@@ -181,7 +191,7 @@ Applies system settings and creates the `dev` user:
 - Shell aliases (Docker, Git, Terraform, system)
 - Shell integrations (fzf, zoxide, delta)
 
-### `setup-clean.sh` - Image Cleanup
+### Image Cleanup (clean command)
 
 Prepares the system for imaging (golden image/VM template):
 

@@ -80,28 +80,28 @@ Vagrant.configure("2") do |config|
   end
 
   # ==========================================================================
-  # Provisioning with ubuntu-build bootstrap
+  # Provisioning with ubuntu-build (setup-all.sh)
   # ==========================================================================
   
-  # Option 1: Direct bootstrap from GitHub (headless, no GUI)
+  # Option 1: Direct bootstrap from GitHub (headless, creates dev user)
   config.vm.provision "shell", inline: <<-SHELL
     echo "==> Provisioning with ubuntu-build..."
-    curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/bootstrap.sh | bash
+    curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/setup-all.sh | bash
   SHELL
   
   # Option 2: With Ubuntu Desktop GUI (set vmware.gui = true above)
   # config.vm.provision "shell", inline: <<-SHELL
-  #   curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/bootstrap.sh | bash -s -- --gui
+  #   curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/setup-all.sh | bash -s -- --gui
   # SHELL
   
   # Option 3: Headless server (no desktop settings at all)
   # config.vm.provision "shell", inline: <<-SHELL
-  #   curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/bootstrap.sh | bash -s -- --no-desktop
+  #   curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/setup-all.sh | bash -s -- --no-desktop
   # SHELL
   
   # Option 4: Dev tools only (skip env configuration)
   # config.vm.provision "shell", inline: <<-SHELL
-  #   curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/bootstrap.sh | bash -s -- dev
+  #   curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/setup-all.sh | bash -s -- dev
   # SHELL
   
   # Option 5: Local provisioning (if you have the repo cloned)
@@ -120,12 +120,13 @@ Vagrant.configure("2") do |config|
   ╠═══════════════════════════════════════════════════════════════════╣
   ║                                                                   ║
   ║  Connect:     vagrant ssh                                         ║
+  ║  Dev user:    su - dev  (password: dev)                           ║
   ║  IP Address:  vagrant ssh -c "hostname -I"                        ║
   ║                                                                   ║
   ║  Installed:   Docker, Terraform, Packer, AWS CLI, VS Code,        ║
   ║               gh, fzf, zoxide, delta, Starship, and more          ║
   ║                                                                   ║
-  ║  Note: Log out and back in for Docker group to take effect        ║
+  ║  Note: The dev user has passwordless sudo and Docker access       ║
   ║                                                                   ║
   ╚═══════════════════════════════════════════════════════════════════╝
 
