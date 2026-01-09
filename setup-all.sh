@@ -360,9 +360,13 @@ ensure_docker_repo() {
 }
 
 ensure_vscode_repo() {
+  # Remove any existing conflicting VS Code repo configs
+  rm -f /etc/apt/sources.list.d/vscode*.list 2>/dev/null || true
+  rm -f /etc/apt/sources.list.d/microsoft*.list 2>/dev/null || true
+  
   add_gpg_key "https://packages.microsoft.com/keys/microsoft.asc" "/usr/share/keyrings/vscode.gpg"
   add_apt_repo "/etc/apt/sources.list.d/vscode.list" \
-    "deb [signed-by=/usr/share/keyrings/vscode.gpg] https://packages.microsoft.com/repos/code stable main"
+    "deb [signed-by=/usr/share/keyrings/vscode.gpg arch=amd64] https://packages.microsoft.com/repos/code stable main"
 }
 
 ensure_github_cli_repo() {
