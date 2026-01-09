@@ -681,7 +681,7 @@ EOF
   # Set dock favorites and disable welcome
   tee /etc/dconf/db/local.d/01-devbox-defaults >/dev/null <<'EOF'
 [org/gnome/shell]
-favorite-apps=['org.gnome.Terminal.desktop', 'code.desktop', 'google-chrome.desktop', 'firefox_firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']
+favorite-apps=['org.gnome.Terminal.desktop', 'code.desktop', 'org.gnome.TextEditor.desktop', 'google-chrome.desktop', 'firefox_firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']
 welcome-dialog-last-shown-version='99.0'
 
 [org/gnome/shell/extensions/dash-to-dock]
@@ -742,30 +742,47 @@ apply_dev_user_desktop_settings() {
   mkdir -p /home/dev/.config
   echo "yes" | tee /home/dev/.config/gnome-initial-setup-done >/dev/null
   
-  # Create dconf keyfile for the dev user and compile it
-  local dconf_dir="/home/dev/.config/dconf"
-  local keyfile_dir="/tmp/dev-dconf-keyfiles"
-  
-  rm -rf "$keyfile_dir" "$dconf_dir/user" 2>/dev/null || true
-  mkdir -p "$keyfile_dir" "$dconf_dir"
-  
-  # Write the keyfile with all settings
-  tee "$keyfile_dir/user.txt" >/dev/null <<'EOF'
-[org/gnome/shell]
-favorite-apps=['org.gnome.Terminal.desktop', 'code.desktop', 'google-chrome.desktop', 'firefox_firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']
-welcome-dialog-last-shown-version='99.0'
+  # Create autostart script that runs on first login to set dock favorites
+  # This is the most reliable approach because gsettings needs a running session
+  mkdir -p /home/dev/.config/autostart
+  tee /home/dev/.config/autostart/dev-setup-dock.desktop >/dev/null <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Dev Setup Dock Favorites
+Exec=/home/dev/.config/autostart/dev-setup-dock.sh
+Hidden=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
 EOF
-  
-  # Compile the keyfile into binary dconf database
-  dconf compile "$dconf_dir/user" "$keyfile_dir"
+
+  tee /home/dev/.config/autostart/dev-setup-dock.sh >/dev/null <<'SCRIPT'
+#!/bin/bash
+# One-time dock favorites setup - runs on first login then deletes itself
+
+# Set dock favorites
+gsettings set org.gnome.shell favorite-apps \
+  "['org.gnome.Terminal.desktop', 'code.desktop', 'org.gnome.TextEditor.desktop', 'google-chrome.desktop', 'firefox_firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']"
+
+# Disable welcome dialog
+gsettings set org.gnome.shell welcome-dialog-last-shown-version '99.0'
+
+# Disable screen lock and power settings
+gsettings set org.gnome.desktop.screensaver lock-enabled false 2>/dev/null || true
+gsettings set org.gnome.desktop.screensaver idle-activation-enabled false 2>/dev/null || true
+gsettings set org.gnome.desktop.session idle-delay 0 2>/dev/null || true
+gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing' 2>/dev/null || true
+
+# Self-destruct - remove autostart files after running
+rm -f /home/dev/.config/autostart/dev-setup-dock.desktop
+rm -f /home/dev/.config/autostart/dev-setup-dock.sh
+SCRIPT
+
+  chmod +x /home/dev/.config/autostart/dev-setup-dock.sh
   
   # Fix ownership
   chown -R dev:dev /home/dev/.config
   
-  # Cleanup
-  rm -rf "$keyfile_dir"
-  
-  log "Dev user desktop settings applied via dconf compile"
+  log "Dev user desktop settings will be applied on first login"
 }
 
 disable_lid_close_suspend() {
