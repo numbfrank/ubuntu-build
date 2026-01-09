@@ -18,6 +18,7 @@ set -euo pipefail
 #
 # Options:
 #   --gui              Install Ubuntu Desktop GUI
+#   --force, -f        Force re-run even if already completed
 #   --no-desktop       Skip desktop-specific settings
 #   --no-user-tweaks   Skip per-user configurations
 #   --no-dev-user      Don't create the 'dev' user
@@ -49,7 +50,11 @@ DO_USER_TWEAKS=1
 CREATE_DEV_USER=1
 INSTALL_GUI=0
 NO_SHUTDOWN=0
+FORCE_RERUN=0
 TARGET_USER="${SUDO_USER:-$USER}"
+
+# Marker file to track completed setup
+SETUP_MARKER="/etc/ubuntu-devbox-setup-complete"
 
 # Clean command options
 KEEP_SSH_HOST_KEYS=0
@@ -126,6 +131,10 @@ parse_args() {
         ;;
       --no-dev-user)
         CREATE_DEV_USER=0
+        shift
+        ;;
+      --force|-f)
+        FORCE_RERUN=1
         shift
         ;;
       --user)
@@ -551,6 +560,12 @@ create_dev_user() {
 }
 
 regenerate_ssh_host_keys() {
+  # Only regenerate on first run to avoid breaking existing SSH connections
+  if [[ -f "$SETUP_MARKER" ]] && [[ "$FORCE_RERUN" -eq 0 ]]; then
+    log "Skipping SSH host key regeneration (already configured)"
+    return 0
+  fi
+  
   log "Regenerating SSH host keys"
   rm -f /etc/ssh/ssh_host_*
   ssh-keygen -A
@@ -1081,10 +1096,31 @@ do_update() {
 }
 
 do_all() {
+  # Detect re-run
+  if [[ -f "$SETUP_MARKER" ]] && [[ "$FORCE_RERUN" -eq 0 ]]; then
+    warn "Setup has already been run on this system"
+    log "Marker file: $SETUP_MARKER"
+    echo ""
+    log "Options:"
+    log "  - Run 'update' command to update installed tools"
+    log "  - Use --force to re-run full setup (may regenerate SSH keys)"
+    log "  - Delete $SETUP_MARKER to reset"
+    echo ""
+    read -rp "Continue anyway? [y/N] " response
+    if [[ ! "$response" =~ ^[Yy]$ ]]; then
+      log "Aborted"
+      exit 0
+    fi
+  fi
+  
   do_dev
   echo ""
   do_env
   echo ""
+  
+  # Create marker file on successful completion
+  echo "Setup completed: $(date -Iseconds)" | tee "$SETUP_MARKER" >/dev/null
+  
   success "Full setup complete!"
   log "Re-login required for Docker group membership and shell changes"
 }
