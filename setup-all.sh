@@ -717,33 +717,38 @@ EOF
   rm -f /etc/xdg/autostart/gnome-tour*.desktop 2>/dev/null || true
   rm -f /etc/xdg/autostart/ubuntu-first-run*.desktop 2>/dev/null || true
   
-  # Method 4: Disable for existing dev user
-  if [[ -d /home/dev ]]; then
-    mkdir -p /home/dev/.config
-    echo "yes" | tee /home/dev/.config/gnome-initial-setup-done >/dev/null
-    chown -R dev:dev /home/dev/.config 2>/dev/null || true
-  fi
-  
-  # Apply favorites directly to dev user's dconf database
-  if id dev &>/dev/null; then
-    log "Applying dock favorites directly for dev user"
-    local dev_dconf_dir="/home/dev/.config/dconf"
-    
-    # Remove any existing user dconf database so system defaults apply
-    rm -f "$dev_dconf_dir/user" 2>/dev/null || true
-    mkdir -p "$dev_dconf_dir"
-    chown -R dev:dev /home/dev/.config
-    
-    # Write favorites using dconf with a fresh dbus session
-    sudo -u dev dbus-launch --exit-with-session dconf write /org/gnome/shell/favorite-apps \
-      "['org.gnome.Terminal.desktop', 'code.desktop', 'google-chrome.desktop', 'firefox_firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']" 2>/dev/null || true
-    
-    # Also write via gsettings as backup (different mechanism)
-    sudo -u dev dbus-launch --exit-with-session gsettings set org.gnome.shell favorite-apps \
-      "['org.gnome.Terminal.desktop', 'code.desktop', 'google-chrome.desktop', 'firefox_firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']" 2>/dev/null || true
-  fi
+  # Method 4: Mark gnome-initial-setup done in skel (for new users)
+  # Dev user specific setup happens later in apply_dev_user_desktop_settings
   
   log "Ubuntu Desktop installed - reboot to start GUI"
+}
+
+apply_dev_user_desktop_settings() {
+  # This runs AFTER dev user is created
+  if ! id dev &>/dev/null; then
+    return 0
+  fi
+  
+  log "Applying desktop settings for dev user"
+  
+  # Mark gnome-initial-setup as done
+  mkdir -p /home/dev/.config
+  echo "yes" | tee /home/dev/.config/gnome-initial-setup-done >/dev/null
+  
+  # Remove any existing user dconf database so system defaults apply
+  rm -f /home/dev/.config/dconf/user 2>/dev/null || true
+  mkdir -p /home/dev/.config/dconf
+  chown -R dev:dev /home/dev/.config
+  
+  # Write favorites using dconf with a fresh dbus session
+  sudo -u dev dbus-launch --exit-with-session dconf write /org/gnome/shell/favorite-apps \
+    "['org.gnome.Terminal.desktop', 'code.desktop', 'google-chrome.desktop', 'firefox_firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']" 2>/dev/null || true
+  
+  # Also write via gsettings as backup (different mechanism)
+  sudo -u dev dbus-launch --exit-with-session gsettings set org.gnome.shell favorite-apps \
+    "['org.gnome.Terminal.desktop', 'code.desktop', 'google-chrome.desktop', 'firefox_firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']" 2>/dev/null || true
+  
+  log "Dev user desktop settings applied"
 }
 
 disable_lid_close_suspend() {
@@ -1126,6 +1131,11 @@ do_env() {
   
   if [[ "$CREATE_DEV_USER" -eq 1 ]]; then
     create_dev_user
+  fi
+  
+  # Apply desktop settings for dev user AFTER user is created
+  if [[ "$INSTALL_GUI" -eq 1 ]] && [[ "$CREATE_DEV_USER" -eq 1 ]]; then
+    apply_dev_user_desktop_settings
   fi
   
   if [[ "$DO_DESKTOP" -eq 1 ]]; then
