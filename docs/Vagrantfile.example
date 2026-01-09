@@ -103,11 +103,6 @@ Vagrant.configure("2") do |config|
   # config.vm.provision "shell", inline: <<-SHELL
   #   curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/setup-all.sh | bash -s -- dev
   # SHELL
-  
-  # Option 5: Local provisioning (if you have the repo cloned)
-  # config.vm.provision "shell", inline: <<-SHELL
-  #   cd /vagrant && sudo ./setup.sh
-  # SHELL
 
   # ==========================================================================
   # Post-provisioning message

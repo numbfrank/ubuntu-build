@@ -1,10 +1,9 @@
 # Ubuntu Dev Box Build Scripts
 
-Bootstrap scripts for setting up Ubuntu/Debian development VMs with a modern engineering toolchain.
+A single script to set up Ubuntu/Debian development VMs with a modern engineering toolchain.
 
-## Quick Start (Fresh Ubuntu Install)
+## Quick Start
 
-**All-in-One Script (Recommended):**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/setup-all.sh | sudo bash
 ```
@@ -109,35 +108,6 @@ curl -fsSL ... | sudo bash -s -- clean
 | `--no-dev-user` | Don't create the dev user |
 | `--no-shutdown` | Don't shutdown after clean |
 | `--dry-run` | Show what would run |
-
----
-
-## Alternative: Modular Scripts
-
-If you prefer granular control, you can clone the repo and use the modular scripts:
-
-```bash
-git clone https://github.com/numbfrank/ubuntu-build.git
-cd ubuntu-build
-
-# Full setup (install tools + configure system + create dev user)
-sudo ./setup.sh
-
-# Or run individual components
-sudo ./setup.sh dev      # Install dev tools only
-sudo ./setup.sh env      # Configure system + create dev user
-sudo ./setup.sh clean    # Prepare for imaging
-
-# With options
-sudo ./setup.sh --gui              # Include desktop installation
-sudo ./setup.sh env --no-dev-user  # Configure without dev user
-```
-
-The modular approach uses:
-- `setup.sh` — Controller script
-- `setup-dev.sh` — Tool installation
-- `setup-env.sh` — System configuration
-- `setup-clean.sh` — Image cleanup
 
 ---
 
