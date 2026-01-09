@@ -175,7 +175,9 @@ main() {
   
   log "Ubuntu Dev Box Setup"
   log "Command: $COMMAND"
-  [[ ${#PASS_THROUGH_ARGS[@]} -gt 0 ]] && log "Options: ${PASS_THROUGH_ARGS[*]}"
+  [[ ${#DEV_ARGS[@]} -gt 0 ]] && log "Dev options: ${DEV_ARGS[*]}"
+  [[ ${#ENV_ARGS[@]} -gt 0 ]] && log "Env options: ${ENV_ARGS[*]}"
+  [[ ${#CLEAN_ARGS[@]} -gt 0 ]] && log "Clean options: ${CLEAN_ARGS[*]}"
   echo ""
   
   case "$COMMAND" in
