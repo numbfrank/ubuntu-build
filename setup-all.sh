@@ -697,19 +697,22 @@ EOF
   
   dconf update 2>/dev/null || true
   
-  # Disable gnome-initial-setup completely
-  log "Disabling GNOME initial setup / welcome screen"
+  # Disable gnome-initial-setup and gnome-tour completely
+  log "Disabling GNOME initial setup / welcome screen / tour"
   
   # Method 1: Mark as done for all users via skel
   mkdir -p /etc/skel/.config
   echo "yes" | tee /etc/skel/.config/gnome-initial-setup-done >/dev/null
   
-  # Method 2: Disable the systemd user service
+  # Method 2: Disable the systemd user services
   systemctl --global mask gnome-initial-setup-first-login.service 2>/dev/null || true
   systemctl --global mask gnome-initial-setup.service 2>/dev/null || true
+  systemctl --global mask gnome-tour.service 2>/dev/null || true
   
   # Method 3: Remove the autostart entries
   rm -f /etc/xdg/autostart/gnome-initial-setup*.desktop 2>/dev/null || true
+  rm -f /etc/xdg/autostart/gnome-tour*.desktop 2>/dev/null || true
+  rm -f /etc/xdg/autostart/ubuntu-first-run*.desktop 2>/dev/null || true
   
   # Method 4: Disable for existing dev user
   if [[ -d /home/dev ]]; then
