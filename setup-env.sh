@@ -293,7 +293,19 @@ install_ubuntu_desktop() {
     sudo systemctl enable gdm || true
   fi
   
-  log "Ubuntu Desktop installed - reboot to start GUI"
+  # Configure GDM to show dev user as default (no auto-login)
+  log "Setting dev as default login user"
+  sudo mkdir -p /var/lib/AccountsService/users
+  sudo tee /var/lib/AccountsService/users/dev >/dev/null <<'EOF'
+[User]
+SystemAccount=false
+EOF
+  
+  # Set dev as last logged in user (makes it the default selection)
+  sudo mkdir -p /var/cache/gdm
+  echo "dev" | sudo tee /var/cache/gdm/last-logged-in-user >/dev/null 2>&1 || true
+  
+  log "Ubuntu Desktop installed - reboot to start GUI (default user: dev)"
 }
 
 disable_lid_close_suspend() {
