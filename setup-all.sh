@@ -647,14 +647,42 @@ EOF
   mkdir -p /var/cache/gdm
   echo "dev" | tee /var/cache/gdm/last-logged-in-user >/dev/null 2>&1 || true
   
-  # Configure dock favorites
-  log "Configuring dock favorites"
+  # Configure dock favorites and disable welcome screen
+  log "Configuring dock favorites and GNOME defaults"
   mkdir -p /etc/dconf/db/local.d
-  tee /etc/dconf/db/local.d/01-dock-favorites >/dev/null <<'EOF'
-[org/gnome/shell]
-favorite-apps=['org.gnome.Nautilus.desktop', 'org.gnome.Terminal.desktop', 'code.desktop', 'google-chrome.desktop', 'firefox.desktop', 'org.gnome.Settings.desktop']
+  mkdir -p /etc/dconf/profile
+  
+  # Create dconf profile
+  tee /etc/dconf/profile/user >/dev/null <<'EOF'
+user-db:user
+system-db:local
 EOF
+  
+  # Set dock favorites and disable welcome
+  tee /etc/dconf/db/local.d/01-devbox-defaults >/dev/null <<'EOF'
+[org/gnome/shell]
+favorite-apps=['org.gnome.Terminal.desktop', 'code.desktop', 'google-chrome.desktop', 'firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']
+welcome-dialog-last-shown-version='99.0'
+
+[org/gnome/desktop/notifications/application/org-gnome-welcome]
+enable=false
+
+[org/gnome/shell/extensions/dash-to-dock]
+dock-fixed=true
+EOF
+  
   dconf update 2>/dev/null || true
+  
+  # Also disable gnome-initial-setup for all users
+  mkdir -p /etc/skel/.config
+  echo "yes" | tee /etc/skel/.config/gnome-initial-setup-done >/dev/null
+  
+  # Disable for existing dev user
+  if [[ -d /home/dev ]]; then
+    mkdir -p /home/dev/.config
+    echo "yes" | tee /home/dev/.config/gnome-initial-setup-done >/dev/null
+    chown -R dev:dev /home/dev/.config 2>/dev/null || true
+  fi
   
   log "Ubuntu Desktop installed - reboot to start GUI"
 }
