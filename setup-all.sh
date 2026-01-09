@@ -674,7 +674,7 @@ EOF
   # Set dock favorites and disable welcome
   tee /etc/dconf/db/local.d/01-devbox-defaults >/dev/null <<'EOF'
 [org/gnome/shell]
-favorite-apps=['org.gnome.Terminal.desktop', 'code.desktop', 'google-chrome.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']
+favorite-apps=['org.gnome.Terminal.desktop', 'code.desktop', 'google-chrome.desktop', 'firefox_firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']
 welcome-dialog-last-shown-version='99.0'
 
 [org/gnome/shell/extensions/dash-to-dock]
@@ -727,7 +727,7 @@ EOF
     
     # Write via dconf directly for the dev user
     sudo -u dev dbus-launch dconf write /org/gnome/shell/favorite-apps \
-      "['org.gnome.Terminal.desktop', 'code.desktop', 'google-chrome.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']" 2>/dev/null || true
+      "['org.gnome.Terminal.desktop', 'code.desktop', 'google-chrome.desktop', 'firefox_firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']" 2>/dev/null || true
   fi
   
   log "Ubuntu Desktop installed - reboot to start GUI"
