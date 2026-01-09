@@ -393,9 +393,19 @@ install_or_update_starship() {
   log "Installing or updating Starship"
   curl -fsSL https://starship.rs/install.sh | sh -s -- -y
 
+  # Add to TARGET_USER's bashrc
   local bashrc="/home/${TARGET_USER}/.bashrc"
   if [[ -f "$bashrc" ]] && ! grep -q "starship init bash" "$bashrc"; then
     echo 'eval "$(starship init bash)"' | tee -a "$bashrc" >/dev/null
+  fi
+  
+  # Also add to dev user's bashrc if different
+  if [[ "$TARGET_USER" != "dev" ]] && [[ -d "/home/dev" ]]; then
+    local dev_bashrc="/home/dev/.bashrc"
+    if [[ -f "$dev_bashrc" ]] && ! grep -q "starship init bash" "$dev_bashrc"; then
+      echo 'eval "$(starship init bash)"' | tee -a "$dev_bashrc" >/dev/null
+      chown dev:dev "$dev_bashrc" || true
+    fi
   fi
 }
 
@@ -775,6 +785,15 @@ if [[ -f /home/dev/Pictures/dev-background.png ]]; then
   gsettings set org.gnome.desktop.background picture-uri "file:///home/dev/Pictures/dev-background.png"
   gsettings set org.gnome.desktop.background picture-uri-dark "file:///home/dev/Pictures/dev-background.png"
   gsettings set org.gnome.desktop.background picture-options 'zoom'
+fi
+
+# Configure terminal font (Hack Nerd Font, size 11)
+PROFILE=$(gsettings get org.gnome.Terminal.ProfilesList default 2>/dev/null | tr -d "'")
+if [[ -n "$PROFILE" ]]; then
+  gsettings set org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:${PROFILE}/ font 'Hack Nerd Font Mono 11'
+  gsettings set org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:${PROFILE}/ use-system-font false
+  gsettings set org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:${PROFILE}/ audible-bell false
+  gsettings set org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:${PROFILE}/ bell-mode 'visual'
 fi
 
 # Disable screen lock and power settings
