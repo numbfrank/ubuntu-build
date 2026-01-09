@@ -305,6 +305,23 @@ EOF
   sudo mkdir -p /var/cache/gdm
   echo "dev" | sudo tee /var/cache/gdm/last-logged-in-user >/dev/null 2>&1 || true
   
+  # Configure dock favorites for dev user
+  log "Configuring dock favorites"
+  local dock_favorites="['org.gnome.Nautilus.desktop', 'org.gnome.Terminal.desktop', 'code.desktop', 'google-chrome.desktop', 'firefox.desktop', 'org.gnome.Settings.desktop']"
+  
+  # Set for dev user
+  sudo -u dev dbus-launch gsettings set org.gnome.shell favorite-apps "$dock_favorites" 2>/dev/null || true
+  
+  # Also create dconf override for all users
+  sudo mkdir -p /etc/dconf/db/local.d
+  sudo tee /etc/dconf/db/local.d/01-dock-favorites >/dev/null <<'EOF'
+[org/gnome/shell]
+favorite-apps=['org.gnome.Nautilus.desktop', 'org.gnome.Terminal.desktop', 'code.desktop', 'google-chrome.desktop', 'firefox.desktop', 'org.gnome.Settings.desktop']
+EOF
+  
+  # Update dconf database
+  sudo dconf update 2>/dev/null || true
+  
   log "Ubuntu Desktop installed - reboot to start GUI (default user: dev)"
 }
 
