@@ -1,0 +1,115 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# Example Vagrantfile for ubuntu-build
+# Provisions a fresh Ubuntu VM with the dev box setup
+#
+# Usage:
+#   vagrant up          # Create and provision
+#   vagrant ssh         # Connect to VM
+#   vagrant provision   # Re-run provisioning
+#   vagrant destroy     # Remove VM
+
+Vagrant.configure("2") do |config|
+  # Ubuntu 24.04 LTS (Noble)
+  config.vm.box = "ubuntu/noble64"
+  
+  # Alternative boxes:
+  # config.vm.box = "ubuntu/jammy64"   # Ubuntu 22.04
+  # config.vm.box = "debian/bookworm64" # Debian 12
+  
+  config.vm.hostname = "devbox"
+  
+  # Network configuration (NAT is default - access via port forwarding)
+  # config.vm.network "private_network", type: "dhcp"  # Host-only network
+  # config.vm.network "public_network"                  # Bridged network
+  
+  # Forward common dev ports (uncomment as needed)
+  # config.vm.network "forwarded_port", guest: 3000, host: 3000  # Node.js
+  # config.vm.network "forwarded_port", guest: 5000, host: 5000  # Flask
+  # config.vm.network "forwarded_port", guest: 8000, host: 8000  # Django
+  # config.vm.network "forwarded_port", guest: 8080, host: 8080  # Alt HTTP
+  
+  # Synced folder (project directory)
+  config.vm.synced_folder ".", "/vagrant", disabled: false
+  # config.vm.synced_folder "~/projects", "/home/vagrant/projects"
+  
+  # VirtualBox provider settings
+  config.vm.provider "virtualbox" do |vb|
+    vb.name = "ubuntu-devbox"
+    vb.memory = 4096
+    vb.cpus = 2
+    
+    # Performance tweaks
+    vb.customize ["modifyvm", :id, "--ioapic", "on"]
+    vb.customize ["modifyvm", :id, "--natdnshostresolver1", "on"]
+    
+    # Enable nested virtualization (for Docker)
+    vb.customize ["modifyvm", :id, "--nested-hw-virt", "on"]
+    
+    # GUI (set to true for desktop)
+    vb.gui = false
+  end
+  
+  # VMware provider settings (if using VMware)
+  config.vm.provider "vmware_desktop" do |vmware|
+    vmware.vmx["memsize"] = "4096"
+    vmware.vmx["numvcpus"] = "2"
+    vmware.vmx["vhv.enable"] = "TRUE"  # Nested virtualization
+  end
+  
+  # Libvirt provider settings (Linux KVM)
+  config.vm.provider "libvirt" do |libvirt|
+    libvirt.memory = 4096
+    libvirt.cpus = 2
+    libvirt.nested = true
+  end
+
+  # ==========================================================================
+  # Provisioning with ubuntu-build bootstrap
+  # ==========================================================================
+  
+  # Option 1: Direct bootstrap from GitHub (recommended)
+  config.vm.provision "shell", inline: <<-SHELL
+    echo "==> Provisioning with ubuntu-build..."
+    curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/bootstrap.sh | bash
+  SHELL
+  
+  # Option 2: Headless server (no desktop settings)
+  # config.vm.provision "shell", inline: <<-SHELL
+  #   curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/bootstrap.sh | bash -s -- --no-desktop
+  # SHELL
+  
+  # Option 3: Dev tools only (skip env configuration)
+  # config.vm.provision "shell", inline: <<-SHELL
+  #   curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/bootstrap.sh | bash -s -- dev
+  # SHELL
+  
+  # Option 4: Local provisioning (if you have the repo cloned)
+  # config.vm.provision "shell", inline: <<-SHELL
+  #   cd /vagrant && sudo ./setup.sh
+  # SHELL
+
+  # ==========================================================================
+  # Post-provisioning message
+  # ==========================================================================
+  
+  config.vm.post_up_message = <<-MSG
+
+  ╔═══════════════════════════════════════════════════════════════════╗
+  ║                    Ubuntu Dev Box Ready!                          ║
+  ╠═══════════════════════════════════════════════════════════════════╣
+  ║                                                                   ║
+  ║  Connect:     vagrant ssh                                         ║
+  ║  IP Address:  vagrant ssh -c "hostname -I"                        ║
+  ║                                                                   ║
+  ║  Installed:   Docker, Terraform, Packer, AWS CLI, VS Code,        ║
+  ║               gh, fzf, zoxide, delta, Starship, and more          ║
+  ║                                                                   ║
+  ║  Note: Log out and back in for Docker group to take effect        ║
+  ║                                                                   ║
+  ╚═══════════════════════════════════════════════════════════════════╝
+
+  MSG
+
+end
