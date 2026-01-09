@@ -1220,7 +1220,10 @@ do_all() {
   echo "Setup completed: $(date -Iseconds)" | tee "$SETUP_MARKER" >/dev/null
   
   success "Full setup complete!"
-  log "Re-login required for Docker group membership and shell changes"
+  log "System will reboot in 10 seconds to apply all changes..."
+  log "(Press Ctrl+C to cancel)"
+  sleep 10
+  reboot
 }
 
 # =============================================================================
