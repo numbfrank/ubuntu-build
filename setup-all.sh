@@ -735,20 +735,30 @@ apply_dev_user_desktop_settings() {
   mkdir -p /home/dev/.config
   echo "yes" | tee /home/dev/.config/gnome-initial-setup-done >/dev/null
   
-  # Remove any existing user dconf database so system defaults apply
-  rm -f /home/dev/.config/dconf/user 2>/dev/null || true
-  mkdir -p /home/dev/.config/dconf
+  # Create dconf keyfile for the dev user and compile it
+  local dconf_dir="/home/dev/.config/dconf"
+  local keyfile_dir="/tmp/dev-dconf-keyfiles"
+  
+  rm -rf "$keyfile_dir" "$dconf_dir/user" 2>/dev/null || true
+  mkdir -p "$keyfile_dir" "$dconf_dir"
+  
+  # Write the keyfile with all settings
+  tee "$keyfile_dir/user.txt" >/dev/null <<'EOF'
+[org/gnome/shell]
+favorite-apps=['org.gnome.Terminal.desktop', 'code.desktop', 'google-chrome.desktop', 'firefox_firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']
+welcome-dialog-last-shown-version='99.0'
+EOF
+  
+  # Compile the keyfile into binary dconf database
+  dconf compile "$dconf_dir/user" "$keyfile_dir"
+  
+  # Fix ownership
   chown -R dev:dev /home/dev/.config
   
-  # Write favorites using dconf with a fresh dbus session
-  sudo -u dev dbus-launch --exit-with-session dconf write /org/gnome/shell/favorite-apps \
-    "['org.gnome.Terminal.desktop', 'code.desktop', 'google-chrome.desktop', 'firefox_firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']" 2>/dev/null || true
+  # Cleanup
+  rm -rf "$keyfile_dir"
   
-  # Also write via gsettings as backup (different mechanism)
-  sudo -u dev dbus-launch --exit-with-session gsettings set org.gnome.shell favorite-apps \
-    "['org.gnome.Terminal.desktop', 'code.desktop', 'google-chrome.desktop', 'firefox_firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']" 2>/dev/null || true
-  
-  log "Dev user desktop settings applied"
+  log "Dev user desktop settings applied via dconf compile"
 }
 
 disable_lid_close_suspend() {
