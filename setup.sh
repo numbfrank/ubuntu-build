@@ -92,20 +92,32 @@ run_script() {
 }
 
 do_dev() {
-  run_script "${SCRIPT_DIR}/setup-dev.sh" "${DEV_ARGS[@]:-}"
+  if [[ ${#DEV_ARGS[@]} -gt 0 ]]; then
+    run_script "${SCRIPT_DIR}/setup-dev.sh" "${DEV_ARGS[@]}"
+  else
+    run_script "${SCRIPT_DIR}/setup-dev.sh"
+  fi
 }
 
 do_env() {
-  run_script "${SCRIPT_DIR}/setup-env.sh" "${ENV_ARGS[@]:-}"
+  if [[ ${#ENV_ARGS[@]} -gt 0 ]]; then
+    run_script "${SCRIPT_DIR}/setup-env.sh" "${ENV_ARGS[@]}"
+  else
+    run_script "${SCRIPT_DIR}/setup-env.sh"
+  fi
 }
 
 do_clean() {
-  run_script "${SCRIPT_DIR}/setup-clean.sh" "${CLEAN_ARGS[@]:-}"
+  if [[ ${#CLEAN_ARGS[@]} -gt 0 ]]; then
+    run_script "${SCRIPT_DIR}/setup-clean.sh" "${CLEAN_ARGS[@]}"
+  else
+    run_script "${SCRIPT_DIR}/setup-clean.sh"
+  fi
 }
 
 do_update() {
   DEV_ARGS+=("--update-only")
-  run_script "${SCRIPT_DIR}/setup-dev.sh" "${DEV_ARGS[@]:-}"
+  run_script "${SCRIPT_DIR}/setup-dev.sh" "${DEV_ARGS[@]}"
 }
 
 do_all() {
