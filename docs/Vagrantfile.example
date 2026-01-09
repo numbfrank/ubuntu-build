@@ -15,14 +15,19 @@
 ENV['VAGRANT_DEFAULT_PROVIDER'] = 'vmware_desktop'
 
 Vagrant.configure("2") do |config|
-  # Bento Ubuntu 24.04 LTS (works with VirtualBox, VMware, libvirt)
-  config.vm.box = "bento/ubuntu-24.04"
+  # ==========================================================================
+  # Box Selection - Choose ONE
+  # ==========================================================================
   
-  # Alternative Bento boxes:
-  # config.vm.box = "bento/ubuntu-22.04"   # Ubuntu 22.04 LTS
-  # config.vm.box = "bento/ubuntu-20.04"   # Ubuntu 20.04 LTS
-  # config.vm.box = "bento/debian-12"      # Debian 12 Bookworm
-  # config.vm.box = "bento/debian-11"      # Debian 11 Bullseye
+  config.vm.box = "gusztavvargadr/ubuntu-desktop"
+  
+  # WITH GUI - Ubuntu Desktop pre-installed (larger download, but GUI ready)
+  # config.vm.box = "gusztavvargadr/ubuntu-desktop-2404-lts"
+  
+  # Alternative boxes:
+  # config.vm.box = "bento/ubuntu-24.04"                    # Headless 24.04
+  # config.vm.box = "bento/debian-12"                       # Headless Debian 12
+  # config.vm.box = "gusztavvargadr/ubuntu-desktop" # GUI 24.04
   
   config.vm.hostname = "devbox"
   
