@@ -698,13 +698,16 @@ EOF
   dconf update 2>/dev/null || true
   
   # Disable gnome-initial-setup and gnome-tour completely
-  log "Disabling GNOME initial setup / welcome screen / tour"
+  log "Removing GNOME initial setup / welcome screen packages"
   
-  # Method 1: Mark as done for all users via skel
+  # Remove the packages entirely - most reliable method
+  apt-get remove --autoremove -y gnome-initial-setup gnome-tour 2>/dev/null || true
+  
+  # Also mark as done for any reinstall via skel
   mkdir -p /etc/skel/.config
   echo "yes" | tee /etc/skel/.config/gnome-initial-setup-done >/dev/null
   
-  # Method 2: Disable the systemd user services
+  # Mask the systemd user services as backup
   systemctl --global mask gnome-initial-setup-first-login.service 2>/dev/null || true
   systemctl --global mask gnome-initial-setup.service 2>/dev/null || true
   systemctl --global mask gnome-tour.service 2>/dev/null || true
