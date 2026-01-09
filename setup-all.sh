@@ -650,38 +650,73 @@ EOF
   # Configure dock favorites and disable welcome screen
   log "Configuring dock favorites and GNOME defaults"
   mkdir -p /etc/dconf/db/local.d
+  mkdir -p /etc/dconf/db/local.d/locks
   mkdir -p /etc/dconf/profile
   
-  # Create dconf profile
+  # Create dconf profile - must be named 'user' and loaded by gdm
   tee /etc/dconf/profile/user >/dev/null <<'EOF'
 user-db:user
+system-db:local
+EOF
+
+  # Also create gdm profile for login screen
+  tee /etc/dconf/profile/gdm >/dev/null <<'EOF'
+user-db:user
+system-db:gdm
 system-db:local
 EOF
   
   # Set dock favorites and disable welcome
   tee /etc/dconf/db/local.d/01-devbox-defaults >/dev/null <<'EOF'
 [org/gnome/shell]
-favorite-apps=['org.gnome.Terminal.desktop', 'code.desktop', 'google-chrome.desktop', 'firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']
+favorite-apps=['org.gnome.Terminal.desktop', 'code.desktop', 'google-chrome.desktop', 'firefox_firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']
 welcome-dialog-last-shown-version='99.0'
 
 [org/gnome/desktop/notifications/application/org-gnome-welcome]
 enable=false
 
-[org/gnome/shell/extensions/dash-to-dock]
-dock-fixed=true
+[org/gnome/shell/extensions/ding]
+show-home=false
+EOF
+
+  # Lock the favorite-apps so system default is used
+  tee /etc/dconf/db/local.d/locks/01-devbox-locks >/dev/null <<'EOF'
+/org/gnome/shell/favorite-apps
 EOF
   
   dconf update 2>/dev/null || true
   
-  # Also disable gnome-initial-setup for all users
+  # Disable gnome-initial-setup completely
+  log "Disabling GNOME initial setup / welcome screen"
+  
+  # Method 1: Mark as done for all users via skel
   mkdir -p /etc/skel/.config
   echo "yes" | tee /etc/skel/.config/gnome-initial-setup-done >/dev/null
   
-  # Disable for existing dev user
+  # Method 2: Disable the systemd user service
+  systemctl --global mask gnome-initial-setup-first-login.service 2>/dev/null || true
+  systemctl --global mask gnome-initial-setup.service 2>/dev/null || true
+  
+  # Method 3: Remove the autostart entries
+  rm -f /etc/xdg/autostart/gnome-initial-setup*.desktop 2>/dev/null || true
+  
+  # Method 4: Disable for existing dev user
   if [[ -d /home/dev ]]; then
     mkdir -p /home/dev/.config
     echo "yes" | tee /home/dev/.config/gnome-initial-setup-done >/dev/null
     chown -R dev:dev /home/dev/.config 2>/dev/null || true
+  fi
+  
+  # Apply favorites directly to dev user's dconf database
+  if id dev &>/dev/null; then
+    log "Applying dock favorites directly for dev user"
+    local dev_dconf_dir="/home/dev/.config/dconf"
+    mkdir -p "$dev_dconf_dir"
+    chown dev:dev "$dev_dconf_dir"
+    
+    # Write via dconf directly for the dev user
+    sudo -u dev dbus-launch dconf write /org/gnome/shell/favorite-apps \
+      "['org.gnome.Terminal.desktop', 'code.desktop', 'google-chrome.desktop', 'firefox_firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']" 2>/dev/null || true
   fi
   
   log "Ubuntu Desktop installed - reboot to start GUI"
