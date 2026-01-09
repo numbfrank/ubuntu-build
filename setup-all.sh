@@ -728,11 +728,18 @@ EOF
   if id dev &>/dev/null; then
     log "Applying dock favorites directly for dev user"
     local dev_dconf_dir="/home/dev/.config/dconf"
-    mkdir -p "$dev_dconf_dir"
-    chown dev:dev "$dev_dconf_dir"
     
-    # Write via dconf directly for the dev user
-    sudo -u dev dbus-launch dconf write /org/gnome/shell/favorite-apps \
+    # Remove any existing user dconf database so system defaults apply
+    rm -f "$dev_dconf_dir/user" 2>/dev/null || true
+    mkdir -p "$dev_dconf_dir"
+    chown -R dev:dev /home/dev/.config
+    
+    # Write favorites using dconf with a fresh dbus session
+    sudo -u dev dbus-launch --exit-with-session dconf write /org/gnome/shell/favorite-apps \
+      "['org.gnome.Terminal.desktop', 'code.desktop', 'google-chrome.desktop', 'firefox_firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']" 2>/dev/null || true
+    
+    # Also write via gsettings as backup (different mechanism)
+    sudo -u dev dbus-launch --exit-with-session gsettings set org.gnome.shell favorite-apps \
       "['org.gnome.Terminal.desktop', 'code.desktop', 'google-chrome.desktop', 'firefox_firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']" 2>/dev/null || true
   fi
   
