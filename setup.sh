@@ -32,7 +32,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMAND="all"
 DRY_RUN=0
-PASS_THROUGH_ARGS=()
+DEV_ARGS=()
+ENV_ARGS=()
+CLEAN_ARGS=()
 
 # Colors for output
 RED='\033[0;31m'
@@ -90,20 +92,20 @@ run_script() {
 }
 
 do_dev() {
-  run_script "${SCRIPT_DIR}/setup-dev.sh" "${PASS_THROUGH_ARGS[@]:-}"
+  run_script "${SCRIPT_DIR}/setup-dev.sh" "${DEV_ARGS[@]:-}"
 }
 
 do_env() {
-  run_script "${SCRIPT_DIR}/setup-env.sh" "${PASS_THROUGH_ARGS[@]:-}"
+  run_script "${SCRIPT_DIR}/setup-env.sh" "${ENV_ARGS[@]:-}"
 }
 
 do_clean() {
-  run_script "${SCRIPT_DIR}/setup-clean.sh" "${PASS_THROUGH_ARGS[@]:-}"
+  run_script "${SCRIPT_DIR}/setup-clean.sh" "${CLEAN_ARGS[@]:-}"
 }
 
 do_update() {
-  PASS_THROUGH_ARGS+=("--update-only")
-  run_script "${SCRIPT_DIR}/setup-dev.sh" "${PASS_THROUGH_ARGS[@]:-}"
+  DEV_ARGS+=("--update-only")
+  run_script "${SCRIPT_DIR}/setup-dev.sh" "${DEV_ARGS[@]:-}"
 }
 
 do_all() {
@@ -131,21 +133,27 @@ parse_args() {
       -h|--help)
         usage
         ;;
-      # Pass through to sub-scripts
-      --no-desktop|--no-user-tweaks|--no-shutdown|--update|--update-only|--no-dev-user|--gui)
-        PASS_THROUGH_ARGS+=("$1")
+      # Args for setup-dev.sh only
+      --update|--update-only)
+        DEV_ARGS+=("$1")
+        shift
+        ;;
+      # Args for setup-env.sh only
+      --no-desktop|--no-user-tweaks|--no-dev-user|--gui)
+        ENV_ARGS+=("$1")
         shift
         ;;
       --user)
-        PASS_THROUGH_ARGS+=("$1" "$2")
+        ENV_ARGS+=("$1" "$2")
         shift 2
         ;;
-      --keep-*)
-        PASS_THROUGH_ARGS+=("$1")
+      # Args for setup-clean.sh only
+      --no-shutdown|--cloud-init-clean)
+        CLEAN_ARGS+=("$1")
         shift
         ;;
-      --cloud-init-clean)
-        PASS_THROUGH_ARGS+=("$1")
+      --keep-*)
+        CLEAN_ARGS+=("$1")
         shift
         ;;
       *)
