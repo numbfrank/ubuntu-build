@@ -132,7 +132,7 @@ parse_args() {
         usage
         ;;
       # Pass through to sub-scripts
-      --no-desktop|--no-user-tweaks|--no-shutdown|--update|--update-only)
+      --no-desktop|--no-user-tweaks|--no-shutdown|--update|--update-only|--no-dev-user)
         PASS_THROUGH_ARGS+=("$1")
         shift
         ;;

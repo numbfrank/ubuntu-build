@@ -14,10 +14,16 @@ set -euo pipefail
 # Optional flags:
 #   --no-desktop      Do not apply lid-close suspend disable
 #   --no-user-tweaks  Do not apply per-user QoL tweaks
-#   --user <name>     User for per-user tweaks (default: invoking user)
+#   --no-dev-user     Do not create the 'dev' user
+#
+# By default, creates a 'dev' user with:
+#   - Password: dev
+#   - Passwordless sudo
+#   - All aliases, SSH config, and shell integrations
 
 DO_DESKTOP=1
 DO_USER_TWEAKS=1
+CREATE_DEV_USER=1
 TARGET_USER="${SUDO_USER:-$USER}"
 
 log() { printf "\n[%s] %s\n" "$(date +'%F %T')" "$*"; }
@@ -27,6 +33,7 @@ parse_args() {
     case "$1" in
       --no-desktop) DO_DESKTOP=0; shift ;;
       --no-user-tweaks) DO_USER_TWEAKS=0; shift ;;
+      --no-dev-user) CREATE_DEV_USER=0; shift ;;
       --user) TARGET_USER="$2"; shift 2 ;;
       -h|--help)
         sed -n '1,180p' "$0"
@@ -118,6 +125,52 @@ ensure_ssh_client() {
   log "Ensuring OpenSSH client and server are installed"
   ensure_pkg openssh-client
   ensure_pkg openssh-server
+}
+
+create_dev_user() {
+  local dev_user="dev"
+  local dev_home="/home/${dev_user}"
+  
+  if id "$dev_user" &>/dev/null; then
+    log "User '$dev_user' already exists"
+  else
+    log "Creating user '$dev_user' with passwordless sudo"
+    
+    # Create user with home directory and bash shell
+    useradd -m -s /bin/bash -G sudo,docker "$dev_user" 2>/dev/null || \
+      useradd -m -s /bin/bash -G sudo "$dev_user"
+    
+    # Set a default password (user should change this)
+    echo "${dev_user}:${dev_user}" | chpasswd
+    
+    log "User '$dev_user' created (password: '$dev_user')"
+  fi
+  
+  # Configure passwordless sudo
+  log "Configuring passwordless sudo for '$dev_user'"
+  echo "${dev_user} ALL=(ALL) NOPASSWD:ALL" | tee "/etc/sudoers.d/90-${dev_user}-nopasswd" >/dev/null
+  chmod 440 "/etc/sudoers.d/90-${dev_user}-nopasswd"
+  
+  # Validate sudoers syntax
+  if ! visudo -c -f "/etc/sudoers.d/90-${dev_user}-nopasswd" >/dev/null 2>&1; then
+    log "ERROR: Invalid sudoers syntax, removing file"
+    rm -f "/etc/sudoers.d/90-${dev_user}-nopasswd"
+    return 1
+  fi
+  
+  # Copy SSH keys from TARGET_USER if they exist
+  local source_ssh="/home/${TARGET_USER}/.ssh"
+  local dest_ssh="${dev_home}/.ssh"
+  
+  if [[ -d "$source_ssh" ]] && [[ "$TARGET_USER" != "$dev_user" ]]; then
+    log "Copying SSH keys from '$TARGET_USER' to '$dev_user'"
+    cp -r "$source_ssh" "$dest_ssh" 2>/dev/null || true
+    chown -R "${dev_user}:${dev_user}" "$dest_ssh" 2>/dev/null || true
+    chmod 700 "$dest_ssh" 2>/dev/null || true
+    chmod 600 "$dest_ssh"/* 2>/dev/null || true
+  fi
+  
+  log "Dev user setup complete"
 }
 
 regenerate_ssh_host_keys() {
@@ -659,6 +712,11 @@ main() {
   set_uk_locale
   install_emoji_fonts
 
+  # Create dev user (enabled by default)
+  if [[ "$CREATE_DEV_USER" -eq 1 ]]; then
+    create_dev_user
+  fi
+
   if [[ "$DO_DESKTOP" -eq 1 ]]; then
     disable_lid_close_suspend
     disable_screen_lock
@@ -666,6 +724,8 @@ main() {
   fi
 
   if [[ "$DO_USER_TWEAKS" -eq 1 ]]; then
+    # Apply tweaks to invoking user
+    log "Applying user tweaks for: $TARGET_USER"
     user_bash_history_tweaks
     user_ssh_keepalive_config
     setup_user_ssh_keys
@@ -673,9 +733,25 @@ main() {
     add_docker_tool_aliases
     add_common_aliases
     setup_shell_integrations
+    
+    # Also apply tweaks to dev user if created
+    if [[ "$CREATE_DEV_USER" -eq 1 ]] && [[ "$TARGET_USER" != "dev" ]]; then
+      log "Applying user tweaks for: dev"
+      TARGET_USER="dev"
+      user_bash_history_tweaks
+      user_ssh_keepalive_config
+      setup_user_ssh_keys
+      configure_ssh_agent
+      add_docker_tool_aliases
+      add_common_aliases
+      setup_shell_integrations
+    fi
   fi
 
   log "Done"
+  if [[ "$CREATE_DEV_USER" -eq 1 ]]; then
+    log "Dev user created - login: dev / password: dev"
+  fi
 }
 
 main "$@"

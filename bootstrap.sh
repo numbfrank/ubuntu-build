@@ -18,8 +18,13 @@ set -euo pipefail
 # Options (passed to setup.sh):
 #   --no-desktop       Skip desktop-specific settings
 #   --no-user-tweaks   Skip per-user configurations
-#   --user <name>      Specify target user
+#   --no-dev-user      Don't create the 'dev' user
 #   --no-shutdown      Don't shutdown after clean
+#
+# Creates 'dev' user by default:
+#   - Username: dev
+#   - Password: dev (CHANGE THIS!)
+#   - Passwordless sudo
 #
 # Examples:
 #   curl ... | sudo bash                        # Full setup (dev + env)
@@ -121,6 +126,12 @@ main() {
   echo ""
   success "Bootstrap complete!"
   log "Re-login required for all changes to take effect"
+  echo ""
+  log "┌─────────────────────────────────────────────────────────┐"
+  log "│  Dev user created:  dev / dev                          │"
+  log "│  ⚠️  IMPORTANT: Change the password!                    │"
+  log "│     sudo passwd dev                                    │"
+  log "└─────────────────────────────────────────────────────────┘"
   echo ""
 }
 
