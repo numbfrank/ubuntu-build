@@ -17,11 +17,15 @@ set -euo pipefail
 #   update       Update all installed tools
 #
 # Options:
+#   --console          Console/WSL only: no GUI, skip desktop settings (default for WSL)
 #   --gui              Install Ubuntu Desktop GUI
 #   --force, -f        Force re-run even if already completed
 #   --no-desktop       Skip desktop-specific settings
 #   --no-user-tweaks   Skip per-user configurations
-#   --no-dev-user      Don't create the 'dev' user
+#   --current-user     Apply config to current user only (do not create dev user)
+#   --dev-user         Create dev user and apply config to dev only
+#   --user NAME        Apply config to NAME only (create dev only if NAME is 'dev')
+#   --no-dev-user      Don't create the 'dev' user (same as --current-user)
 #   --no-shutdown      Don't shutdown after clean (for clean command)
 #   --dry-run          Show what would run without executing
 #   -h, --help         Show this help message
@@ -32,10 +36,12 @@ set -euo pipefail
 #   - Passwordless sudo
 #
 # Examples:
-#   curl ... | sudo bash                    # Full setup
-#   curl ... | sudo bash -s -- --gui        # Full setup with desktop GUI
-#   curl ... | sudo bash -s -- dev          # Dev tools only
-#   curl ... | sudo bash -s -- --no-dev-user # Skip dev user creation
+#   curl ... | sudo bash                    # Full setup (creates dev + applies to both)
+#   curl ... | sudo bash -s -- --console   # Explicit console/WSL setup (no GUI)
+#   curl ... | sudo bash -s -- --current-user  # Set up current user only (no dev user)
+#   curl ... | sudo bash -s -- --dev-user  # Create dev user, apply to dev only
+#   curl ... | sudo bash -s -- --gui       # Full setup with desktop GUI
+#   curl ... | sudo bash -s -- dev         # Dev tools only
 
 # =============================================================================
 # Configuration
@@ -121,12 +127,27 @@ parse_args() {
         INSTALL_GUI=1
         shift
         ;;
+      --console)
+        INSTALL_GUI=0
+        DO_DESKTOP=0
+        shift
+        ;;
       --no-desktop)
         DO_DESKTOP=0
         shift
         ;;
       --no-user-tweaks)
         DO_USER_TWEAKS=0
+        shift
+        ;;
+      --current-user)
+        CREATE_DEV_USER=0
+        TARGET_USER="${SUDO_USER:-$USER}"
+        shift
+        ;;
+      --dev-user)
+        CREATE_DEV_USER=1
+        TARGET_USER="dev"
         shift
         ;;
       --no-dev-user)
@@ -139,6 +160,12 @@ parse_args() {
         ;;
       --user)
         TARGET_USER="$2"
+        # Apply to this user only: create dev only if target is dev
+        if [[ "$2" == "dev" ]]; then
+          CREATE_DEV_USER=1
+        else
+          CREATE_DEV_USER=0
+        fi
         shift 2
         ;;
       # Clean options
@@ -1042,13 +1069,13 @@ gclean() {
 mkcd() { mkdir -p "$1" && cd "$1"; }
 EOF
   
-  # Git delta configuration
+  # Git delta configuration (run from $HOME so dev user cannot hit repo cwd)
   if cmd_exists delta; then
-    sudo -u "$TARGET_USER" git config --global core.pager "delta"
-    sudo -u "$TARGET_USER" git config --global interactive.diffFilter "delta --color-only"
-    sudo -u "$TARGET_USER" git config --global delta.navigate true
-    sudo -u "$TARGET_USER" git config --global delta.light false
-    sudo -u "$TARGET_USER" git config --global merge.conflictstyle "diff3"
+    sudo -u "$TARGET_USER" bash -c 'cd "$HOME" && git config --global core.pager "delta"'
+    sudo -u "$TARGET_USER" bash -c 'cd "$HOME" && git config --global interactive.diffFilter "delta --color-only"'
+    sudo -u "$TARGET_USER" bash -c 'cd "$HOME" && git config --global delta.navigate true'
+    sudo -u "$TARGET_USER" bash -c 'cd "$HOME" && git config --global delta.light false'
+    sudo -u "$TARGET_USER" bash -c 'cd "$HOME" && git config --global merge.conflictstyle "diff3"'
   fi
   
   append_if_missing "$bashrc" "# FZF shell integration" "$fzf_block"

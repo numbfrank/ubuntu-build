@@ -1,29 +1,46 @@
 # Ubuntu Dev Box Build Scripts
 
-A single script to set up Ubuntu/Debian development VMs with a modern engineering toolchain.
+A single script to set up Ubuntu/Debian development VMs (and WSL) with a modern engineering toolchain.
 
 ## Quick Start
 
+**From the repo (run in repo root):**
+```bash
+sudo bash setup-all.sh
+```
+
+**One-liner (curl):**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/setup-all.sh | sudo bash
 ```
 
-**With Ubuntu Desktop GUI:**
+**Console/WSL only (no GUI):**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/setup-all.sh | sudo bash -s -- --gui
+sudo bash setup-all.sh --console
 ```
 
-This will:
+**With Ubuntu Desktop GUI:**
+```bash
+sudo bash setup-all.sh --gui
+# or: curl -fsSL ... | sudo bash -s -- --gui
+```
+
+**Current user only (no dev user):**
+```bash
+sudo bash setup-all.sh --console --current-user
+```
+
+Default run will:
 1. Install all development tools (Docker, Terraform, VS Code, etc.)
-2. Create a `dev` user with passwordless sudo
-3. Configure the system and apply all shell customizations
-4. (Optional) Install Ubuntu Desktop with dev as default user
+2. Create a `dev` user with passwordless sudo (unless you use `--current-user` or `--user <name>`)
+3. Configure the system and apply shell customizations to the target user(s)
+4. (Optional with `--gui`) Install Ubuntu Desktop with dev as default user
 
 ---
 
-## ⚠️ Important: Dev User
+## ⚠️ Important: Dev User (optional)
 
-The bootstrap creates a dedicated **`dev` user** for all development activities:
+By default the bootstrap creates a dedicated **`dev` user**. Use `--current-user` or `--user <name>` to set up only a specific user and skip creating `dev`.
 
 | Setting | Value |
 |---------|-------|
@@ -71,23 +88,33 @@ The `dev` user has:
 ## Options
 
 ```bash
-# Full setup with GUI desktop (creates dev user, default GDM user)
-curl -fsSL ... | sudo bash -s -- --gui
+# Full setup (creates dev user, applies to both current user and dev)
+sudo bash setup-all.sh
 
-# Headless server (no desktop, creates dev user)
-curl -fsSL ... | sudo bash
+# Console/WSL only
+sudo bash setup-all.sh --console
 
-# Skip dev user creation
-curl -fsSL ... | sudo bash -s -- --no-dev-user
+# Current user only (no dev user)
+sudo bash setup-all.sh --console --current-user
+
+# Create dev user and apply config to dev only
+sudo bash setup-all.sh --dev-user
+
+# Apply config to a specific user only (no dev unless name is 'dev')
+sudo bash setup-all.sh env --user user
+sudo bash setup-all.sh --user user --force   # full re-run for user "user"
+
+# Full setup with GUI desktop
+sudo bash setup-all.sh --gui
 
 # Dev tools only (no system config)
-curl -fsSL ... | sudo bash -s -- dev
+sudo bash setup-all.sh dev
 
-# Full setup without desktop settings
-curl -fsSL ... | sudo bash -s -- --no-desktop
+# Env/config only
+sudo bash setup-all.sh env
 
 # Prepare for imaging after setup
-curl -fsSL ... | sudo bash -s -- clean
+sudo bash setup-all.sh clean
 ```
 
 **Commands:**
@@ -102,10 +129,15 @@ curl -fsSL ... | sudo bash -s -- clean
 **Flags:**
 | Flag | Description |
 |------|-------------|
+| `--console` | Console/WSL only: no GUI, skip desktop settings |
 | `--gui` | Install Ubuntu Desktop / GNOME |
 | `--no-desktop` | Skip desktop-specific settings |
-| `--no-user-tweaks` | Skip per-user configurations |
+| `--current-user` | Apply config to current user only (do not create dev user) |
+| `--dev-user` | Create dev user and apply config to dev only |
+| `--user NAME` | Apply config to NAME only (create dev only if NAME is `dev`) |
 | `--no-dev-user` | Don't create the dev user |
+| `--no-user-tweaks` | Skip per-user configurations |
+| `--force`, `-f` | Force re-run even if setup already completed |
 | `--no-shutdown` | Don't shutdown after clean |
 | `--dry-run` | Show what would run |
 
@@ -130,8 +162,6 @@ curl -fsSL ... | sudo bash -s -- clean
 
 ### System Configuration
 
-### System Configuration
-
 **System Settings:**
 - NTP time sync
 - Increased inotify limits (for IDEs/watchers)
@@ -148,13 +178,13 @@ curl -fsSL ... | sudo bash -s -- clean
 - Disables browser first-run prompts
 - Sets `dev` as default GDM login user
 
-**Dev User (created by default):**
+**Dev User (created by default unless `--current-user` or `--user <other>`):**
 - Username: `dev`, Password: `dev`
 - Passwordless sudo
 - Member of `docker` group
 - All aliases and integrations pre-configured
 
-**User Tweaks (applied to both invoking user and dev):**
+**User Tweaks (applied to target user(s)—see `--current-user`, `--dev-user`, `--user`):**
 - SSH key generation (Ed25519 + RSA)
 - SSH agent configuration
 - Bash history improvements
