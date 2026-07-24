@@ -229,7 +229,7 @@ tf, tfi, tfp, tfa, tfd
 **System:**
 ```bash
 ll, la, ports, listening, meminfo, diskinfo, cpuinfo, myip
-mkcd, extract, backup  # Utility functions
+mkcd, take, extract, backup  # Utility functions
 ```
 
 ---

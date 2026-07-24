@@ -1067,6 +1067,7 @@ gclean() {
   git gc --aggressive --prune=now
 }
 mkcd() { mkdir -p "$1" && cd "$1"; }
+take() { mkdir -p -- "$1" && cd -- "$1"; }
 EOF
   
   # Git delta configuration (run from $HOME so dev user cannot hit repo cwd)
