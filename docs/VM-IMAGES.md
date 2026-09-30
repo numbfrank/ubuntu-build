@@ -1,216 +1,27 @@
-# VM Images & Default Credentials
+# Choosing a VM image
 
-Quick reference for obtaining VM images and their default login credentials.
+Choose an image that matches how you will use the machine. The setup script supports Ubuntu and Debian; it can install a desktop when requested, but a desktop installer image is usually the simplest starting point for a GUI VM.
 
-## Ubuntu Cloud Images
+| Use | Starting image | Setup profile |
+| --- | --- | --- |
+| GUI VM with GNOME installed | [Ubuntu Desktop ISO](https://ubuntu.com/download/desktop) or a [Debian live GNOME image](https://www.debian.org/distrib/) | Default auto profile |
+| Minimal VM that needs GNOME | Ubuntu Server ISO or a Debian base install | `--desktop` |
+| Headless VM or server | [Ubuntu Server ISO](https://ubuntu.com/download/server), [Ubuntu release cloud image](https://cloud-images.ubuntu.com/releases/), or a [Debian cloud image](https://www.debian.org/distrib/) | `--headless` |
 
-**Official Downloads:** https://cloud-images.ubuntu.com/
+The `--desktop` profile also works on a minimal VM if you want the script to install the desktop packages. Allow enough disk space and memory for a full graphical environment. The `--headless` profile omits GUI applications and desktop settings.
 
-| Version | Codename | Download |
-|---------|----------|----------|
-| 24.04 LTS | Noble | [noble/current](https://cloud-images.ubuntu.com/noble/current/) |
-| 22.04 LTS | Jammy | [jammy/current](https://cloud-images.ubuntu.com/jammy/current/) |
-| 20.04 LTS | Focal | [focal/current](https://cloud-images.ubuntu.com/focal/current/) |
+## Cloud images
 
-**Default Credentials:**
-- Username: `ubuntu`
-- Password: *none* (SSH key auth via cloud-init)
-- Root: disabled
+Cloud images use cloud-init for first-boot setup. Add your SSH public key and configure the initial account through your VM platform or a cloud-init seed **before booting**. Do not expect a usable default password. The usual Ubuntu account is `ubuntu`; Debian's default account varies by platform (the generic cloud image uses `debian`). See the [Ubuntu cloud-image documentation](https://documentation.ubuntu.com/public-images/) and [Debian cloud-image FAQ](https://wiki.debian.org/Cloud) for details.
 
-> Cloud images require cloud-init for initial configuration. Use a seed ISO or metadata service to inject SSH keys.
+For a local hypervisor, use the image format and guest settings recommended by its documentation. [Ubuntu release cloud images](https://cloud-images.ubuntu.com/releases/) and [Debian cloud images](https://cloud.debian.org/images/cloud/) provide downloadable disk images; desktop and server ISOs provide an interactive installer instead.
 
----
+## Vagrant
 
-## Debian Cloud Images
+Use `vagrant ssh` to enter a Vagrant VM, then `su - dev` with the initial `dev` password after provisioning. The chosen box and provider determine the Vagrant login account and authentication. The repository's [Vagrant example](Vagrantfile.example) shows a starting configuration; review its box, provider, resources, and provisioning profile before `vagrant up`.
 
-**Official Downloads:** https://cloud.debian.org/images/cloud/
+## After installation
 
-| Version | Codename | Download |
-|---------|----------|----------|
-| 12 | Bookworm | [bookworm/latest](https://cloud.debian.org/images/cloud/bookworm/latest/) |
-| 11 | Bullseye | [bullseye/latest](https://cloud.debian.org/images/cloud/bullseye/latest/) |
+By default the setup script creates `dev` with the initial password `dev`. Change that password with `sudo passwd dev` after setup and add your SSH public key before logging into `dev` remotely. If an existing SSH server allows password login, the known `dev/dev` credential can be used while it remains unchanged; keep network access restricted until post-configuration is complete. An existing `dev` account keeps its current password.
 
-**Default Credentials:**
-- Username: `debian`
-- Password: *none* (SSH key auth via cloud-init)
-- Root: disabled
-
----
-
-## Vagrant Boxes
-
-**Vagrant Cloud:** https://app.vagrantup.com/boxes/search
-
-| Box | Provider | Command |
-|-----|----------|---------|
-| Ubuntu 24.04 | VirtualBox | `vagrant init ubuntu/noble64` |
-| Ubuntu 22.04 | VirtualBox | `vagrant init ubuntu/jammy64` |
-| Debian 12 | VirtualBox | `vagrant init debian/bookworm64` |
-| Generic Ubuntu | libvirt | `vagrant init generic/ubuntu2204` |
-
-**Default Credentials:**
-- Username: `vagrant`
-- Password: `vagrant`
-- SSH Key: Vagrant insecure key (auto-replaced on first boot)
-- Sudo: passwordless
-
----
-
-## VirtualBox
-
-**Pre-built VMs:** https://www.osboxes.org/virtualbox-images/
-
-**Default Credentials (osboxes.org):**
-- Username: `osboxes`
-- Password: `osboxes.org`
-- Root password: `osboxes.org`
-
-**Ubuntu Desktop ISOs:** https://ubuntu.com/download/desktop
-
----
-
-## VMware
-
-**Pre-built VMs:** https://www.osboxes.org/vmware-images/
-
-**VMware Marketplace:** https://marketplace.cloud.vmware.com/
-
-**Default Credentials (osboxes.org):**
-- Username: `osboxes`
-- Password: `osboxes.org`
-
----
-
-## Hyper-V
-
-**Quick Create Gallery (Windows 10/11):**
-- Ubuntu 24.04 LTS
-- Ubuntu 22.04 LTS
-
-Access via: Hyper-V Manager → Quick Create → Select Ubuntu
-
-**Default Credentials:**
-- Set during first boot wizard
-
----
-
-## Multipass (Ubuntu VMs)
-
-**Install:** https://multipass.run/
-
-```bash
-# Launch Ubuntu VM
-multipass launch --name dev 24.04
-
-# Shell into VM
-multipass shell dev
-```
-
-**Default Credentials:**
-- Username: `ubuntu`
-- Password: *none* (use `multipass shell`)
-- Sudo: passwordless
-
----
-
-## AWS EC2 AMIs
-
-**AMI Finder:** https://cloud-images.ubuntu.com/locator/ec2/
-
-**Default Credentials:**
-| OS | Username |
-|----|----------|
-| Ubuntu | `ubuntu` |
-| Debian | `admin` |
-| Amazon Linux | `ec2-user` |
-| RHEL | `ec2-user` |
-| CentOS | `centos` |
-
-> EC2 uses SSH key pairs only. No password auth by default.
-
----
-
-## Azure Images
-
-**Marketplace:** https://azuremarketplace.microsoft.com/
-
-**Default Credentials:**
-| OS | Username |
-|----|----------|
-| Ubuntu | Set at creation |
-| Debian | Set at creation |
-
-Azure requires you to specify credentials during VM creation.
-
----
-
-## Google Cloud (GCE)
-
-**Public Images:** `gcloud compute images list`
-
-**Default Credentials:**
-| OS | Username |
-|----|----------|
-| Ubuntu | Your Google account username |
-| Debian | Your Google account username |
-
-GCE uses OS Login or project-level SSH keys.
-
----
-
-## Proxmox / QEMU / KVM
-
-**Cloud-Init Images:**
-- Ubuntu: https://cloud-images.ubuntu.com/ (`.img` files)
-- Debian: https://cloud.debian.org/images/cloud/
-
-**Default Credentials:**
-- Configured via cloud-init at VM creation
-- No default password
-
----
-
-## Docker Desktop VM
-
-**Download:** https://www.docker.com/products/docker-desktop/
-
-**Default Credentials:**
-- N/A (managed by Docker Desktop)
-
----
-
-## UTM (macOS)
-
-**Gallery:** https://mac.getutm.app/gallery/
-
-**Default Credentials:**
-- Varies by image (check gallery page)
-
----
-
-## Quick Reference Table
-
-| Platform | Default User | Default Password |
-|----------|--------------|------------------|
-| Ubuntu Cloud | `ubuntu` | *(SSH key only)* |
-| Debian Cloud | `debian` | *(SSH key only)* |
-| Vagrant | `vagrant` | `vagrant` |
-| osboxes.org | `osboxes` | `osboxes.org` |
-| Multipass | `ubuntu` | *(none)* |
-| AWS EC2 Ubuntu | `ubuntu` | *(SSH key only)* |
-| AWS EC2 Amazon Linux | `ec2-user` | *(SSH key only)* |
-
----
-
-## Security Reminder
-
-⚠️ **Always change default credentials immediately after deployment!**
-
-```bash
-# Change password
-passwd
-
-# Disable password auth (SSH only)
-sudo sed -i 's/^#*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
-sudo systemctl restart ssh
-```
+Run the script's `clean` command only on a VM you are preparing to capture as a reusable image: it removes SSH host keys, machine ID, logs, history, and caches, then shuts down by default. It does not reset the `dev` password or remove SSH private keys, tokens, credentials, or project files; audit those before sharing an image.

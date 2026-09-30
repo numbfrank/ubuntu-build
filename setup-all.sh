@@ -6,8 +6,8 @@ set -euo pipefail
 # =============================================================================
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/setup-all.sh | sudo bash
-#   curl -fsSL ... | sudo bash -s -- [command] [options]
+#   sudo bash setup-all.sh [command] [options]
+#   bash setup-all.sh --headless --dry-run
 #
 # Commands:
 #   all          Run dev + env setup (default)
@@ -17,47 +17,55 @@ set -euo pipefail
 #   update       Update all installed tools
 #
 # Options:
-#   --console          Console/WSL only: no GUI, skip desktop settings (default for WSL)
-#   --gui              Install Ubuntu Desktop GUI
+#   --headless         Server/console install: no GUI apps or desktop settings
+#   --desktop          Install Ubuntu Desktop GUI and desktop apps
+#   --console, --gui   Aliases for --headless and --desktop
 #   --force, -f        Force re-run even if already completed
-#   --no-desktop       Skip desktop-specific settings
+#   --no-desktop       Alias for --headless
 #   --no-user-tweaks   Skip per-user configurations
 #   --current-user     Apply config to current user only (do not create dev user)
 #   --dev-user         Create dev user and apply config to dev only
 #   --user NAME        Apply config to NAME only (create dev only if NAME is 'dev')
 #   --no-dev-user      Don't create the 'dev' user (same as --current-user)
 #   --no-shutdown      Don't shutdown after clean (for clean command)
+#   --uk-settings      Set UK locale, keyboard and timezone
+#   --ssh-server       Install and enable OpenSSH server
+#   --reboot           Reboot after successful full setup
 #   --dry-run          Show what would run without executing
 #   -h, --help         Show this help message
 #
-# Creates 'dev' user by default:
-#   - Username: dev
-#   - Password: dev (CHANGE THIS!)
-#   - Passwordless sudo
+# By default, creates and configures dev with password dev and normal sudo.
+# Existing dev passwords are preserved.
 #
 # Examples:
-#   curl ... | sudo bash                    # Full setup (creates dev + applies to both)
-#   curl ... | sudo bash -s -- --console   # Explicit console/WSL setup (no GUI)
-#   curl ... | sudo bash -s -- --current-user  # Set up current user only (no dev user)
-#   curl ... | sudo bash -s -- --dev-user  # Create dev user, apply to dev only
-#   curl ... | sudo bash -s -- --gui       # Full setup with desktop GUI
-#   curl ... | sudo bash -s -- dev         # Dev tools only
+#   sudo bash setup-all.sh                  # Auto-detect desktop; dev user
+#   sudo bash setup-all.sh --headless       # Headless server
+#   sudo bash setup-all.sh --desktop        # Install Ubuntu Desktop GUI
+#   sudo bash setup-all.sh --current-user   # Configure invoking user instead
+#   sudo bash setup-all.sh dev --headless   # CLI development tools only
 
 # =============================================================================
 # Configuration
 # =============================================================================
 
 COMMAND="all"
+COMMAND_SET=0
 DRY_RUN=0
 DO_UPDATE=0
 UPDATE_ONLY=0
-DO_DESKTOP=1
 DO_USER_TWEAKS=1
 CREATE_DEV_USER=1
 INSTALL_GUI=0
+INSTALL_PROFILE="auto"
+RESOLVED_PROFILE=""
 NO_SHUTDOWN=0
+REBOOT_AFTER=0
 FORCE_RERUN=0
-TARGET_USER="${SUDO_USER:-$USER}"
+TARGET_USER="dev"
+TARGET_HOME=""
+USER_SELECTION="default"
+APPLY_UK_SETTINGS=0
+INSTALL_SSH_SERVER=0
 
 # Marker file to track completed setup
 SETUP_MARKER="/etc/ubuntu-devbox-setup-complete"
@@ -94,15 +102,59 @@ error()   { printf "${RED}[%s] ✗${NC} %s\n" "$(date +'%F %T')" "$*" >&2; }
 # =============================================================================
 
 usage() {
-  sed -n '3,40p' "$0" | sed 's/^# \?//'
+  cat <<'EOF'
+Usage: sudo bash setup-all.sh [all|dev|env|clean|update] [options]
+
+Install profiles:
+  (default)         Use desktop profile if GNOME is installed, otherwise headless
+  --desktop, --gui  Install GNOME and desktop applications
+  --headless, --console, --no-desktop
+                    Skip desktop applications and settings
+
+User selection:
+  (default)         Create/configure dev (password dev; normal sudo)
+  --current-user    Configure only the user who invoked sudo
+  --user NAME       Configure an existing user (create one only for NAME=dev)
+  --dev-user        Create and configure dev (password dev if new)
+  --no-dev-user     Alias for --current-user
+  --no-user-tweaks  Skip per-user shell configuration
+  --uk-settings     Set en_GB locale, UK keyboard and Europe/London timezone
+  --ssh-server      Install and enable OpenSSH server
+
+Other options:
+  --force, -f       Rerun a completed full setup
+  --reboot          Reboot after a successful full setup
+  --dry-run         Print resolved choices without changing the system
+  --update          Upgrade packages during the dev command
+  --update-only     Update installed development tools only
+  --no-shutdown     Do not shut down after clean
+  --keep-ssh-host-keys, --keep-machine-id, --keep-logs,
+  --keep-user-history, --keep-caches, --cloud-init-clean
+                    Clean command options
+  -h, --help        Show this message
+EOF
   exit 0
+}
+
+set_install_profile() {
+  local requested="$1"
+  if [[ "$INSTALL_PROFILE" != "auto" && "$INSTALL_PROFILE" != "$requested" ]]; then
+    error "Conflicting install profiles: $INSTALL_PROFILE and $requested"
+    exit 2
+  fi
+  INSTALL_PROFILE="$requested"
 }
 
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       all|dev|env|clean|update)
+        if [[ "$COMMAND_SET" -eq 1 ]]; then
+          error "Specify only one command"
+          exit 2
+        fi
         COMMAND="$1"
+        COMMAND_SET=1
         shift
         ;;
       --dry-run)
@@ -123,35 +175,42 @@ parse_args() {
         shift
         ;;
       # Env options
-      --gui)
-        INSTALL_GUI=1
+      --gui|--desktop)
+        set_install_profile desktop
         shift
         ;;
-      --console)
-        INSTALL_GUI=0
-        DO_DESKTOP=0
-        shift
-        ;;
-      --no-desktop)
-        DO_DESKTOP=0
+      --console|--headless|--no-desktop)
+        set_install_profile headless
         shift
         ;;
       --no-user-tweaks)
         DO_USER_TWEAKS=0
         shift
         ;;
+      --uk-settings)
+        APPLY_UK_SETTINGS=1
+        shift
+        ;;
+      --ssh-server)
+        INSTALL_SSH_SERVER=1
+        shift
+        ;;
       --current-user)
         CREATE_DEV_USER=0
-        TARGET_USER="${SUDO_USER:-$USER}"
+        TARGET_USER="${SUDO_USER:-${USER:-}}"
+        USER_SELECTION="current"
         shift
         ;;
       --dev-user)
         CREATE_DEV_USER=1
         TARGET_USER="dev"
+        USER_SELECTION="dev"
         shift
         ;;
       --no-dev-user)
         CREATE_DEV_USER=0
+        TARGET_USER="${SUDO_USER:-${USER:-}}"
+        USER_SELECTION="current"
         shift
         ;;
       --force|-f)
@@ -159,7 +218,12 @@ parse_args() {
         shift
         ;;
       --user)
+        if [[ $# -lt 2 || -z "$2" || "$2" == -* ]]; then
+          error "--user requires a username"
+          exit 2
+        fi
         TARGET_USER="$2"
+        USER_SELECTION="named"
         # Apply to this user only: create dev only if target is dev
         if [[ "$2" == "dev" ]]; then
           CREATE_DEV_USER=1
@@ -171,6 +235,10 @@ parse_args() {
       # Clean options
       --no-shutdown)
         NO_SHUTDOWN=1
+        shift
+        ;;
+      --reboot)
+        REBOOT_AFTER=1
         shift
         ;;
       --keep-ssh-host-keys)
@@ -206,6 +274,147 @@ parse_args() {
   done
 }
 
+resolve_install_profile() {
+  case "$INSTALL_PROFILE" in
+    desktop|headless)
+      RESOLVED_PROFILE="$INSTALL_PROFILE"
+      ;;
+    auto)
+      if pkg_installed ubuntu-desktop || pkg_installed gnome-shell || pkg_installed task-gnome-desktop; then
+        RESOLVED_PROFILE="desktop"
+      else
+        RESOLVED_PROFILE="headless"
+      fi
+      ;;
+  esac
+  if [[ "$INSTALL_PROFILE" == "desktop" ]]; then
+    INSTALL_GUI=1
+  fi
+}
+
+resolve_target_user() {
+  if [[ "$COMMAND" != "all" && "$COMMAND" != "env" ]]; then
+    return 0
+  fi
+  if [[ -z "$TARGET_USER" || ( "$USER_SELECTION" != "named" && "$TARGET_USER" == "root" ) ]]; then
+    error "No sudo invoking user found. Pass --user NAME or --dev-user."
+    exit 2
+  fi
+
+  local account
+  account="$(getent passwd "$TARGET_USER" || true)"
+  if [[ -z "$account" ]]; then
+    if [[ "$TARGET_USER" == "dev" && "$CREATE_DEV_USER" -eq 1 ]]; then
+      TARGET_HOME="/home/dev"
+      return 0
+    fi
+    error "User '$TARGET_USER' does not exist"
+    exit 2
+  fi
+  TARGET_HOME="$(cut -d: -f6 <<<"$account")"
+  if [[ "$TARGET_HOME" != /* || ! -d "$TARGET_HOME" ]]; then
+    error "User '$TARGET_USER' has no usable home directory: $TARGET_HOME"
+    exit 2
+  fi
+}
+
+show_plan() {
+  log "Command: $COMMAND"
+  if [[ "$COMMAND" == "clean" ]]; then
+    log "Cleanup: image logs, caches, history, host keys and machine identity"
+    log "Shutdown: $([[ "$NO_SHUTDOWN" -eq 1 ]] && echo no || echo yes)"
+    return 0
+  fi
+
+  local runs_dev=0 runs_env=0
+  case "$COMMAND" in
+    all) runs_dev=1; runs_env=1 ;;
+    dev|update) runs_dev=1 ;;
+    env) runs_env=1 ;;
+  esac
+
+  log "Profile: $RESOLVED_PROFILE (requested: $INSTALL_PROFILE)"
+  if [[ "$runs_dev" -eq 1 ]]; then
+    if [[ "$COMMAND" == "update" || "$UPDATE_ONLY" -eq 1 ]]; then
+      log "Docker: update installed engine to latest Docker CE (skip if absent)"
+    elif pkg_installed docker.io && ! pkg_installed docker-ce; then
+      log "Docker: replace existing docker.io with latest Docker CE"
+    else
+      log "Docker: install or refresh latest Docker CE"
+    fi
+  fi
+  if [[ "$RESOLVED_PROFILE" == "desktop" ]]; then
+    if [[ "$runs_dev" -eq 1 ]]; then
+      case "$(dpkg --print-architecture 2>/dev/null || true)" in
+        amd64) log "GUI packages: yes (VS Code and Chrome)" ;;
+        arm64|armhf) log "GUI packages: yes (VS Code; Chrome unavailable on this architecture)" ;;
+        *) log "GUI packages: no (VS Code and Chrome unavailable on this architecture)" ;;
+      esac
+    else
+      log "GUI packages: no (env configures the desktop only)"
+    fi
+    if [[ "$runs_env" -eq 1 ]]; then
+      log "Desktop font: Hack Nerd Font"
+      if [[ "$CREATE_DEV_USER" -eq 1 ]]; then
+        log "Dev background: apply at next GNOME login"
+      fi
+      if [[ "$INSTALL_GUI" -eq 1 ]]; then
+        log "Desktop installation: yes"
+      else
+        log "Desktop installation: already present"
+      fi
+    else
+      log "Desktop installation: no (dev/update installs tools only)"
+    fi
+  else
+    log "GUI packages: no (headless profile)"
+    log "Desktop installation: no"
+  fi
+
+  if [[ "$runs_env" -eq 1 ]]; then
+    log "Target user: $TARGET_USER"
+    log "Create dev user: $([[ "$CREATE_DEV_USER" -eq 1 ]] && echo yes || echo no)"
+    log "UK settings: $([[ "$APPLY_UK_SETTINGS" -eq 1 ]] && echo yes || echo no)"
+    log "SSH server: $([[ "$INSTALL_SSH_SERVER" -eq 1 ]] && echo yes || echo no)"
+  else
+    log "Target user: not used"
+  fi
+  log "Reboot: $([[ "$REBOOT_AFTER" -eq 1 ]] && echo yes || echo no)"
+}
+
+validate_command_options() {
+  if [[ "$COMMAND" == "clean" && "$INSTALL_PROFILE" != "auto" ]]; then
+    error "Install profile options do not apply to clean"
+    exit 2
+  fi
+  if [[ "$COMMAND" != "all" && "$REBOOT_AFTER" -eq 1 ]]; then
+    error "--reboot applies only to all"
+    exit 2
+  fi
+  if [[ "$COMMAND" != "clean" && ( "$NO_SHUTDOWN" -eq 1 || "$KEEP_SSH_HOST_KEYS" -eq 1 || "$KEEP_MACHINE_ID" -eq 1 || "$KEEP_LOGS" -eq 1 || "$KEEP_USER_HISTORY" -eq 1 || "$KEEP_CACHES" -eq 1 || "$DO_CLOUD_INIT_CLEAN" -eq 1 ) ]]; then
+    error "Clean options require the clean command"
+    exit 2
+  fi
+  if [[ "$COMMAND" != "all" && "$COMMAND" != "env" ]]; then
+    if [[ "$USER_SELECTION" != "default" || "$DO_USER_TWEAKS" -eq 0 || "$APPLY_UK_SETTINGS" -eq 1 || "$INSTALL_SSH_SERVER" -eq 1 ]]; then
+      error "User and environment options require all or env"
+      exit 2
+    fi
+  fi
+  if [[ "$COMMAND" != "all" && "$FORCE_RERUN" -eq 1 ]]; then
+    error "--force applies only to all"
+    exit 2
+  fi
+  if [[ "$COMMAND" != "dev" && "$UPDATE_ONLY" -eq 1 ]]; then
+    error "--update-only applies only to dev"
+    exit 2
+  fi
+  if [[ "$COMMAND" != "all" && "$COMMAND" != "dev" && "$COMMAND" != "update" && "$DO_UPDATE" -eq 1 ]]; then
+    error "--update applies only to all or dev"
+    exit 2
+  fi
+}
+
 # =============================================================================
 # Utility Functions
 # =============================================================================
@@ -229,6 +438,10 @@ detect_distro() {
       DIST_ID="$ID"
       DIST_CODENAME="${VERSION_CODENAME:-}"
       log "Detected: ${PRETTY_NAME:-$ID}"
+      if [[ -z "$DIST_CODENAME" ]]; then
+        error "OS codename is unavailable; cannot configure third-party package repositories"
+        exit 1
+      fi
       ;;
     *)
       error "Unsupported OS: ${ID:-unknown}. Supports Ubuntu/Debian only."
@@ -238,7 +451,9 @@ detect_distro() {
 }
 
 pkg_installed() {
-  dpkg -s "$1" >/dev/null 2>&1
+  local status
+  status="$(dpkg-query -W -f='${db:Status-Abbrev}' "$1" 2>/dev/null)" || return 1
+  [[ "${status:1:1}" == i ]]
 }
 
 cmd_exists() {
@@ -265,8 +480,8 @@ add_gpg_key() {
 add_apt_repo() {
   local list_file="$1"
   local repo_line="$2"
-  if [[ ! -f "$list_file" ]]; then
-    echo "$repo_line" | tee "$list_file" >/dev/null
+  if [[ ! -f "$list_file" ]] || [[ "$(cat "$list_file")" != "$repo_line" ]]; then
+    printf '%s\n' "$repo_line" > "$list_file"
   fi
 }
 
@@ -285,12 +500,10 @@ append_if_missing() {
   local block="$3"
 
   sudo -u "$TARGET_USER" mkdir -p "$(dirname "$file")"
-  touch "$file"
-  chown "$TARGET_USER":"$TARGET_USER" "$file" || true
+  sudo -u "$TARGET_USER" touch "$file"
 
   if ! grep -qF "$needle" "$file" 2>/dev/null; then
-    printf "\n%s\n" "$block" | tee -a "$file" >/dev/null
-    chown "$TARGET_USER":"$TARGET_USER" "$file" || true
+    printf "\n%s\n" "$block" | sudo -u "$TARGET_USER" tee -a "$file" >/dev/null
   fi
 }
 
@@ -300,11 +513,6 @@ append_if_missing() {
 
 apt_update() {
   apt-get update -y
-}
-
-apt_dist_upgrade() {
-  log "Performing full system upgrade (dist-upgrade)"
-  DEBIAN_FRONTEND=noninteractive apt-get dist-upgrade -y
 }
 
 apt_upgrade() {
@@ -348,15 +556,25 @@ setup_git_lfs() {
 }
 
 install_or_update_delta() {
-  if [[ "$UPDATE_ONLY" -eq 1 ]] && ! cmd_exists delta; then
+  if cmd_exists delta; then
+    log "git-delta is already installed; leaving its version unchanged"
+    return 0
+  fi
+  if [[ "$UPDATE_ONLY" -eq 1 ]]; then
     log "git-delta not installed; skipping (update-only mode)"
+    return 0
+  fi
+
+  if [[ "$(dpkg --print-architecture)" != "amd64" ]]; then
+    warn "git-delta .deb installer supports amd64 only; skipping"
     return 0
   fi
 
   log "Installing or updating git-delta"
   local version="0.17.0"
   local deb_url="https://github.com/dandavison/delta/releases/download/${version}/git-delta_${version}_amd64.deb"
-  local tmp_deb="/tmp/git-delta.deb"
+  local tmp_deb
+  tmp_deb="$(mktemp --suffix=.deb)"
   
   curl -fsSL "$deb_url" -o "$tmp_deb"
   dpkg -i "$tmp_deb" || apt-get install -f -y
@@ -370,7 +588,8 @@ install_or_update_zoxide() {
   fi
 
   log "Installing or updating zoxide"
-  curl -fsSL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | sh
+  curl -fsSL https://raw.githubusercontent.com/ajeetdsouza/zoxide/main/install.sh | \
+    sh -s -- --bin-dir /usr/local/bin --man-dir /usr/local/share/man
 }
 
 ensure_hashicorp_repo() {
@@ -387,16 +606,19 @@ ensure_docker_repo() {
 }
 
 ensure_vscode_repo() {
-  # Remove any existing conflicting VS Code repo configs (both .list and .sources formats)
-  rm -f /etc/apt/sources.list.d/vscode*.list 2>/dev/null || true
-  rm -f /etc/apt/sources.list.d/vscode*.sources 2>/dev/null || true
-  rm -f /etc/apt/sources.list.d/microsoft*.list 2>/dev/null || true
-  rm -f /etc/apt/sources.list.d/microsoft*.sources 2>/dev/null || true
-  rm -f /usr/share/keyrings/microsoft.gpg 2>/dev/null || true
+  # Respect an existing VS Code source, including deb822 .sources files.
+  local source
+  for source in /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources; do
+    [[ -f "$source" && "$source" != "/etc/apt/sources.list.d/vscode.list" ]] || continue
+    if grep -q 'packages.microsoft.com/repos/code' "$source"; then
+      log "Using existing VS Code repository: $source"
+      return 0
+    fi
+  done
   
   add_gpg_key "https://packages.microsoft.com/keys/microsoft.asc" "/usr/share/keyrings/vscode.gpg"
   add_apt_repo "/etc/apt/sources.list.d/vscode.list" \
-    "deb [signed-by=/usr/share/keyrings/vscode.gpg arch=amd64] https://packages.microsoft.com/repos/code stable main"
+    "deb [signed-by=/usr/share/keyrings/vscode.gpg arch=$(dpkg --print-architecture)] https://packages.microsoft.com/repos/code stable main"
 }
 
 ensure_github_cli_repo() {
@@ -408,7 +630,7 @@ ensure_github_cli_repo() {
 ensure_chrome_repo() {
   add_gpg_key "https://dl.google.com/linux/linux_signing_key.pub" "/usr/share/keyrings/google-chrome.gpg"
   add_apt_repo "/etc/apt/sources.list.d/google-chrome.list" \
-    "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main"
+    "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main"
 }
 
 install_or_update_starship() {
@@ -420,51 +642,56 @@ install_or_update_starship() {
   log "Installing or updating Starship"
   curl -fsSL https://starship.rs/install.sh | sh -s -- -y
 
-  # Add to TARGET_USER's bashrc
-  local bashrc="/home/${TARGET_USER}/.bashrc"
-  if [[ -f "$bashrc" ]] && ! grep -q "starship init bash" "$bashrc"; then
-    echo 'eval "$(starship init bash)"' | tee -a "$bashrc" >/dev/null
-  fi
-  
-  # Also add to dev user's bashrc if different
-  if [[ "$TARGET_USER" != "dev" ]] && [[ -d "/home/dev" ]]; then
-    local dev_bashrc="/home/dev/.bashrc"
-    if [[ -f "$dev_bashrc" ]] && ! grep -q "starship init bash" "$dev_bashrc"; then
-      echo 'eval "$(starship init bash)"' | tee -a "$dev_bashrc" >/dev/null
-      chown dev:dev "$dev_bashrc" || true
-    fi
-  fi
 }
 
 install_or_update_docker() {
-  if [[ "$UPDATE_ONLY" -eq 1 ]]; then
-    if ! pkg_installed docker-ce && ! pkg_installed docker.io; then
-      log "Docker not installed; skipping (update-only mode)"
-      return 0
-    fi
-    log "Updating Docker"
-    ensure_docker_repo
-    apt_update
-    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-    systemctl enable --now docker || true
+  if [[ "$UPDATE_ONLY" -eq 1 ]] && ! pkg_installed docker.io && ! pkg_installed docker-ce; then
+    log "Docker not installed; skipping (update-only mode)"
     return 0
   fi
 
-  log "Installing Docker"
-  apt-get remove -y docker docker-engine docker.io containerd runc >/dev/null 2>&1 || true
+  local packages=(docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin)
+  local conflicts=(docker.io docker-compose docker-compose-v2 docker-doc docker-buildx podman-docker containerd runc)
+  local installed_conflicts=()
+  local removal_specs=()
+  local package candidate
+
+  log "Installing latest Docker CE from Docker's stable repository"
   ensure_docker_repo
   apt_update
-  apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+  # Confirm the complete replacement is available before changing an existing engine.
+  for package in "${packages[@]}"; do
+    candidate="$(LC_ALL=C apt-cache policy "$package" | awk '$1 == "Candidate:" { print $2; exit }')"
+    if [[ -z "$candidate" || "$candidate" == "(none)" ]]; then
+      error "No APT candidate for $package; leaving the existing Docker installation in place"
+      return 1
+    fi
+  done
+
+  for package in "${conflicts[@]}"; do
+    if pkg_installed "$package"; then
+      installed_conflicts+=("$package")
+      removal_specs+=("${package}-")
+    fi
+  done
+  if [[ "${#installed_conflicts[@]}" -gt 0 ]]; then
+    log "Replacing conflicting Docker packages: ${installed_conflicts[*]}"
+  fi
+
+  # APT resolves installation and removals together; package- requests removal.
+  apt-get install -y "${packages[@]}" "${removal_specs[@]}"
   systemctl enable --now docker
   groupadd -f docker
-  usermod -aG docker "$TARGET_USER"
-  # Also add dev user to docker group if it exists
-  id dev &>/dev/null && usermod -aG docker dev || true
 }
 
 install_or_update_hashicorp() {
+  local packages=(terraform packer)
   if [[ "$UPDATE_ONLY" -eq 1 ]]; then
-    if ! pkg_installed terraform && ! pkg_installed packer; then
+    packages=()
+    pkg_installed terraform && packages+=(terraform)
+    pkg_installed packer && packages+=(packer)
+    if [[ "${#packages[@]}" -eq 0 ]]; then
       log "Terraform/Packer not installed; skipping (update-only mode)"
       return 0
     fi
@@ -473,20 +700,34 @@ install_or_update_hashicorp() {
   log "Installing Terraform and Packer"
   ensure_hashicorp_repo
   apt_update
-  apt-get install -y terraform packer
+  if [[ "$UPDATE_ONLY" -eq 1 ]]; then
+    apt-get install -y --only-upgrade "${packages[@]}"
+  else
+    apt-get install -y "${packages[@]}"
+  fi
 }
 
 install_or_update_awscli() {
-  if [[ "$UPDATE_ONLY" -eq 1 ]] && ! cmd_exists aws; then
-    log "AWS CLI not installed; skipping (update-only mode)"
+  if [[ "$UPDATE_ONLY" -eq 1 && ! -d /usr/local/aws-cli/v2/current ]]; then
+    log "AWS CLI v2 installer is not present; skipping (update-only mode)"
     return 0
   fi
 
   log "Installing or updating AWS CLI v2"
   local tmp="$(mktemp -d)"
-  curl -fsSL https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o "$tmp/aws.zip"
+  local aws_arch
+  case "$(dpkg --print-architecture)" in
+    amd64) aws_arch="x86_64" ;;
+    arm64) aws_arch="aarch64" ;;
+    *) warn "AWS CLI installer is unavailable for this architecture; skipping"; rm -rf "$tmp"; return 0 ;;
+  esac
+  curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${aws_arch}.zip" -o "$tmp/aws.zip"
   unzip -q "$tmp/aws.zip" -d "$tmp"
-  "$tmp/aws/install" --update || true
+  if [[ -d /usr/local/aws-cli/v2/current ]]; then
+    "$tmp/aws/install" --update
+  else
+    "$tmp/aws/install"
+  fi
   rm -rf "$tmp"
 }
 
@@ -572,53 +813,36 @@ EOF
 }
 
 ensure_ssh_client() {
-  log "Ensuring OpenSSH client and server are installed"
+  log "Ensuring OpenSSH client is installed"
   ensure_pkg openssh-client
-  ensure_pkg openssh-server
+  if [[ "$INSTALL_SSH_SERVER" -eq 1 ]]; then
+    log "Installing and enabling OpenSSH server"
+    ensure_pkg openssh-server
+    systemctl enable --now ssh
+  fi
 }
 
 create_dev_user() {
   local dev_user="dev"
-  local dev_home="/home/${dev_user}"
   
   if id "$dev_user" &>/dev/null; then
-    log "User '$dev_user' already exists"
+    log "Existing dev account found; preserving its password"
+    usermod -aG sudo "$dev_user"
   else
-    log "Creating user '$dev_user' with passwordless sudo"
-    useradd -m -s /bin/bash -G sudo "$dev_user" 2>/dev/null || useradd -m -s /bin/bash "$dev_user"
-    usermod -aG sudo "$dev_user" || true
-    echo "${dev_user}:${dev_user}" | chpasswd
-    log "User '$dev_user' created (password: '$dev_user')"
+    log "Creating user '$dev_user' with password dev and normal sudo"
+    useradd -m -s /bin/bash -G sudo "$dev_user"
+    printf '%s\n' 'dev:dev' | chpasswd
   fi
-  
-  # Add to docker group if it exists
-  getent group docker >/dev/null && usermod -aG docker "$dev_user" || true
-  
-  # Configure passwordless sudo
-  log "Configuring passwordless sudo for '$dev_user'"
-  echo "${dev_user} ALL=(ALL) NOPASSWD:ALL" | tee "/etc/sudoers.d/90-${dev_user}-nopasswd" >/dev/null
-  chmod 440 "/etc/sudoers.d/90-${dev_user}-nopasswd"
-  
-  if ! visudo -c -f "/etc/sudoers.d/90-${dev_user}-nopasswd" >/dev/null 2>&1; then
-    log "ERROR: Invalid sudoers syntax, removing file"
-    rm -f "/etc/sudoers.d/90-${dev_user}-nopasswd"
-    return 1
-  fi
-  
-  log "Dev user setup complete"
-}
 
-regenerate_ssh_host_keys() {
-  # Only regenerate on first run to avoid breaking existing SSH connections
-  if [[ -f "$SETUP_MARKER" ]] && [[ "$FORCE_RERUN" -eq 0 ]]; then
-    log "Skipping SSH host key regeneration (already configured)"
-    return 0
+  # Remove only the insecure rule written by older versions of this script.
+  local legacy_sudoers="/etc/sudoers.d/90-dev-nopasswd"
+  if [[ -r "$legacy_sudoers" ]] && [[ "$(tr -d '\n' < "$legacy_sudoers")" == "dev ALL=(ALL) NOPASSWD:ALL" ]]; then
+    rm -f "$legacy_sudoers"
+    log "Removed legacy passwordless sudo rule for dev"
   fi
-  
-  log "Regenerating SSH host keys"
-  rm -f /etc/ssh/ssh_host_*
-  ssh-keygen -A
-  systemctl restart ssh || systemctl restart sshd || true
+
+  TARGET_HOME="$(getent passwd dev | cut -d: -f6)"
+  log "Dev user setup complete"
 }
 
 set_uk_locale() {
@@ -637,7 +861,7 @@ BACKSPACE="guess"
 EOF
   dpkg-reconfigure -f noninteractive keyboard-configuration || true
   
-  if cmd_exists gsettings; then
+  if [[ "$RESOLVED_PROFILE" == "desktop" ]] && cmd_exists gsettings; then
     run_gsettings org.gnome.desktop.input-sources sources "[('xkb', 'gb')]"
   fi
 }
@@ -664,203 +888,63 @@ install_nerd_fonts() {
   log "Hack Nerd Font installed"
 }
 
-install_ubuntu_desktop() {
-  log "Installing Ubuntu Desktop GUI"
-  
-  case "${DIST_ID}" in
-    ubuntu)
-      log "Installing ubuntu-desktop (this may take a while...)"
-      DEBIAN_FRONTEND=noninteractive apt-get install -y ubuntu-desktop
-      ;;
-    debian)
-      log "Installing Debian GNOME desktop (this may take a while...)"
-      DEBIAN_FRONTEND=noninteractive apt-get install -y task-gnome-desktop
-      ;;
-  esac
-  
-  systemctl set-default graphical.target
-  
-  if cmd_exists gdm3; then
-    systemctl enable gdm3 || true
-  elif cmd_exists gdm; then
-    systemctl enable gdm || true
+install_dev_background() {
+  log "Installing GNOME background for dev"
+
+  local script_dir background_source tmp_dir=""
+  script_dir="$(cd -- "$(dirname -- "$0")" && pwd)"
+  background_source="$script_dir/files/dev-background.png"
+  if [[ ! -f "$background_source" ]]; then
+    tmp_dir="$(mktemp -d)"
+    background_source="$tmp_dir/dev-background.png"
+    curl -fsSL --retry 3 \
+      "https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/files/dev-background.png" \
+      -o "$background_source"
   fi
-  
-  # Set dev as default login user
-  log "Setting dev as default login user"
-  mkdir -p /var/lib/AccountsService/users
-  tee /var/lib/AccountsService/users/dev >/dev/null <<'EOF'
-[User]
-SystemAccount=false
-EOF
-  mkdir -p /var/cache/gdm
-  echo "dev" | tee /var/cache/gdm/last-logged-in-user >/dev/null 2>&1 || true
-  
-  # Configure dock favorites and disable welcome screen
-  log "Configuring dock favorites and GNOME defaults"
-  mkdir -p /etc/dconf/db/local.d
-  mkdir -p /etc/dconf/db/local.d/locks
-  mkdir -p /etc/dconf/profile
-  
-  # Create dconf profile - must be named 'user' and loaded by gdm
-  tee /etc/dconf/profile/user >/dev/null <<'EOF'
-user-db:user
-system-db:local
-EOF
-
-  # Also create gdm profile for login screen
-  tee /etc/dconf/profile/gdm >/dev/null <<'EOF'
-user-db:user
-system-db:gdm
-system-db:local
-EOF
-  
-  # Set dock favorites and disable welcome
-  tee /etc/dconf/db/local.d/01-devbox-defaults >/dev/null <<'EOF'
-[org/gnome/shell]
-favorite-apps=['org.gnome.Terminal.desktop', 'code.desktop', 'org.gnome.TextEditor.desktop', 'google-chrome.desktop', 'firefox_firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']
-welcome-dialog-last-shown-version='99.0'
-
-[org/gnome/shell/extensions/dash-to-dock]
-dash-max-icon-size=48
-dock-fixed=true
-dock-position='LEFT'
-
-[org/gnome/desktop/notifications/application/org-gnome-welcome]
-enable=false
-
-[org/gnome/shell/extensions/ding]
-show-home=false
-EOF
-
-  # Lock the favorite-apps so system default is used
-  tee /etc/dconf/db/local.d/locks/01-devbox-locks >/dev/null <<'EOF'
-/org/gnome/shell/favorite-apps
-/org/gnome/shell/extensions/dash-to-dock/dash-max-icon-size
-EOF
-  
-  dconf update 2>/dev/null || true
-  
-  # Disable gnome-initial-setup and gnome-tour completely
-  log "Removing GNOME initial setup / welcome screen packages"
-  
-  # Remove the packages entirely - most reliable method
-  apt-get remove --autoremove -y gnome-initial-setup gnome-tour 2>/dev/null || true
-  
-  # Also mark as done for any reinstall via skel
-  mkdir -p /etc/skel/.config
-  echo "yes" | tee /etc/skel/.config/gnome-initial-setup-done >/dev/null
-  
-  # Mask the systemd user services as backup
-  systemctl --global mask gnome-initial-setup-first-login.service 2>/dev/null || true
-  systemctl --global mask gnome-initial-setup.service 2>/dev/null || true
-  systemctl --global mask gnome-tour.service 2>/dev/null || true
-  
-  # Method 3: Remove the autostart entries
-  rm -f /etc/xdg/autostart/gnome-initial-setup*.desktop 2>/dev/null || true
-  rm -f /etc/xdg/autostart/gnome-tour*.desktop 2>/dev/null || true
-  rm -f /etc/xdg/autostart/ubuntu-first-run*.desktop 2>/dev/null || true
-  
-  # Method 4: Mark gnome-initial-setup done in skel (for new users)
-  # Dev user specific setup happens later in apply_dev_user_desktop_settings
-  
-  log "Ubuntu Desktop installed - reboot to start GUI"
-}
-
-apply_dev_user_desktop_settings() {
-  # This runs AFTER dev user is created
-  if ! id dev &>/dev/null; then
-    return 0
+  install -Dm644 "$background_source" /usr/share/backgrounds/dev-background.png
+  if [[ -n "$tmp_dir" ]]; then
+    rm -rf -- "$tmp_dir"
   fi
-  
-  log "Applying desktop settings for dev user"
-  
-  # Mark gnome-initial-setup as done
-  mkdir -p /home/dev/.config
-  echo "yes" | tee /home/dev/.config/gnome-initial-setup-done >/dev/null
-  
-  # Download wallpaper
-  mkdir -p /home/dev/Pictures
-  curl -fsSL "$REPO_RAW_URL/files/dev-background.png" -o /home/dev/Pictures/dev-background.png || true
-  
-  # Create autostart script that runs on first login to set dock favorites
-  # This is the most reliable approach because gsettings needs a running session
-  mkdir -p /home/dev/.config/autostart
-  tee /home/dev/.config/autostart/dev-setup-dock.desktop >/dev/null <<'EOF'
+
+  install -d -m755 /usr/local/lib/ubuntu-build
+  cat > /usr/local/lib/ubuntu-build/set-dev-background <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+uri="file:///usr/share/backgrounds/dev-background.png"
+gsettings set org.gnome.desktop.background picture-uri "$uri"
+gsettings set org.gnome.desktop.background picture-uri-dark "$uri" 2>/dev/null || true
+gsettings set org.gnome.desktop.background picture-options zoom
+rm -f -- "$HOME/.config/autostart/dev-background.desktop"
+EOF
+  chmod 755 /usr/local/lib/ubuntu-build/set-dev-background
+
+  local autostart_dir="$TARGET_HOME/.config/autostart"
+  sudo -u dev mkdir -p "$autostart_dir"
+  sudo -u dev tee "$autostart_dir/dev-background.desktop" >/dev/null <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=Dev Setup Dock Favorites
-Exec=/home/dev/.config/autostart/dev-setup-dock.sh
-Hidden=false
+Name=Set Dev Background
+Exec=/usr/local/lib/ubuntu-build/set-dev-background
+TryExec=/usr/bin/gsettings
 NoDisplay=true
 X-GNOME-Autostart-enabled=true
 EOF
-
-  tee /home/dev/.config/autostart/dev-setup-dock.sh >/dev/null <<'SCRIPT'
-#!/bin/bash
-# One-time desktop setup - runs on first login then deletes itself
-
-# Set dock favorites
-gsettings set org.gnome.shell favorite-apps \
-  "['org.gnome.Terminal.desktop', 'code.desktop', 'org.gnome.TextEditor.desktop', 'google-chrome.desktop', 'firefox_firefox.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Settings.desktop']"
-
-# Disable welcome dialog
-gsettings set org.gnome.shell welcome-dialog-last-shown-version '99.0'
-
-# Set wallpaper
-if [[ -f /home/dev/Pictures/dev-background.png ]]; then
-  gsettings set org.gnome.desktop.background picture-uri "file:///home/dev/Pictures/dev-background.png"
-  gsettings set org.gnome.desktop.background picture-uri-dark "file:///home/dev/Pictures/dev-background.png"
-  gsettings set org.gnome.desktop.background picture-options 'zoom'
-fi
-
-# Configure terminal font (Hack Nerd Font, size 11)
-PROFILE=$(gsettings get org.gnome.Terminal.ProfilesList default 2>/dev/null | tr -d "'")
-if [[ -n "$PROFILE" ]]; then
-  gsettings set org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:${PROFILE}/ font 'Hack Nerd Font Mono 11'
-  gsettings set org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:${PROFILE}/ use-system-font false
-  gsettings set org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:${PROFILE}/ audible-bell false
-  gsettings set org.gnome.Terminal.Legacy.Profile:/org/gnome/terminal/legacy/profiles:/:${PROFILE}/ bell-mode 'visual'
-fi
-
-# Disable screen lock and power settings
-gsettings set org.gnome.desktop.screensaver lock-enabled false 2>/dev/null || true
-gsettings set org.gnome.desktop.screensaver idle-activation-enabled false 2>/dev/null || true
-gsettings set org.gnome.desktop.session idle-delay 0 2>/dev/null || true
-gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing' 2>/dev/null || true
-
-# Self-destruct - remove autostart files after running
-rm -f /home/dev/.config/autostart/dev-setup-dock.desktop
-rm -f /home/dev/.config/autostart/dev-setup-dock.sh
-SCRIPT
-
-  chmod +x /home/dev/.config/autostart/dev-setup-dock.sh
-  
-  # Fix ownership
-  chown -R dev:dev /home/dev/.config
-  
-  log "Dev user desktop settings will be applied on first login"
+  log "Dev background will be applied at the next GNOME login"
 }
 
-disable_lid_close_suspend() {
-  log "Disabling lid-close suspend"
-  mkdir -p /etc/systemd/logind.conf.d
-  tee /etc/systemd/logind.conf.d/99-dev.conf >/dev/null <<'EOF'
-[Login]
-HandleLidSwitch=ignore
-HandleLidSwitchDocked=ignore
-EOF
-  systemctl restart systemd-logind || true
-}
-
-disable_screen_lock() {
-  log "Disabling screen lock for user: $TARGET_USER"
-  if cmd_exists gsettings; then
-    run_gsettings org.gnome.desktop.screensaver lock-enabled false
-    run_gsettings org.gnome.desktop.screensaver idle-activation-enabled false
-    run_gsettings org.gnome.desktop.session idle-delay 0
-    run_gsettings org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type "'nothing'"
+install_ubuntu_desktop() {
+  log "Installing desktop environment"
+  case "$DIST_ID" in
+    ubuntu) DEBIAN_FRONTEND=noninteractive apt-get install -y ubuntu-desktop ;;
+    debian) DEBIAN_FRONTEND=noninteractive apt-get install -y task-gnome-desktop ;;
+  esac
+  systemctl set-default graphical.target
+  if systemctl list-unit-files gdm3.service --no-legend 2>/dev/null | grep -q gdm3; then
+    systemctl enable gdm3
+  elif systemctl list-unit-files gdm.service --no-legend 2>/dev/null | grep -q gdm; then
+    systemctl enable gdm
   fi
+  log "Desktop installed; reboot to start the graphical login"
 }
 
 disable_browser_first_run() {
@@ -902,42 +986,9 @@ EOF
 EOF
 }
 
-setup_user_ssh_keys() {
-  log "Setting up SSH keys for user: $TARGET_USER"
-  
-  local ssh_dir="/home/${TARGET_USER}/.ssh"
-  sudo -u "$TARGET_USER" mkdir -p "$ssh_dir"
-  sudo -u "$TARGET_USER" chmod 700 "$ssh_dir"
-  
-  if [[ ! -f "${ssh_dir}/id_ed25519" ]]; then
-    sudo -u "$TARGET_USER" ssh-keygen -t ed25519 -f "${ssh_dir}/id_ed25519" -N "" -C "${TARGET_USER}@$(hostname)"
-  fi
-  
-  if [[ ! -f "${ssh_dir}/id_rsa" ]]; then
-    sudo -u "$TARGET_USER" ssh-keygen -t rsa -b 4096 -f "${ssh_dir}/id_rsa" -N "" -C "${TARGET_USER}@$(hostname)"
-  fi
-}
-
-configure_ssh_agent() {
-  log "Configuring SSH agent for user: $TARGET_USER"
-  
-  local bashrc="/home/${TARGET_USER}/.bashrc"
-  local ssh_agent_block
-  read -r -d '' ssh_agent_block <<'EOF' || true
-# SSH agent configuration
-if [ -z "$SSH_AUTH_SOCK" ]; then
-  eval "$(ssh-agent -s)" >/dev/null 2>&1
-  ssh-add ~/.ssh/id_ed25519 2>/dev/null || true
-  ssh-add ~/.ssh/id_rsa 2>/dev/null || true
-fi
-EOF
-  
-  append_if_missing "$bashrc" "# SSH agent configuration" "$ssh_agent_block"
-}
-
 user_bash_history_tweaks() {
   log "Applying Bash history tweaks for user: $TARGET_USER"
-  local bashrc="/home/${TARGET_USER}/.bashrc"
+  local bashrc="${TARGET_HOME}/.bashrc"
   local block
   read -r -d '' block <<'EOF' || true
 # Dev box history defaults
@@ -951,7 +1002,7 @@ EOF
 
 user_ssh_keepalive_config() {
   log "Applying SSH keepalive defaults for user: $TARGET_USER"
-  local sshcfg="/home/${TARGET_USER}/.ssh/config"
+  local sshcfg="${TARGET_HOME}/.ssh/config"
   local block
   read -r -d '' block <<'EOF' || true
 Host *
@@ -959,26 +1010,17 @@ Host *
   ServerAliveCountMax 5
 EOF
   append_if_missing "$sshcfg" "ServerAliveInterval 60" "$block"
-  chmod 600 "$sshcfg" || true
-  chown "$TARGET_USER":"$TARGET_USER" "$sshcfg" || true
+  sudo -u "$TARGET_USER" chmod 700 "${TARGET_HOME}/.ssh"
+  sudo -u "$TARGET_USER" chmod 600 "$sshcfg"
 }
 
 add_common_aliases() {
   log "Adding common dev aliases for user: $TARGET_USER"
   
-  local bashrc="/home/${TARGET_USER}/.bashrc"
+  local bashrc="${TARGET_HOME}/.bashrc"
   local aliases_block
   read -r -d '' aliases_block <<'EOF' || true
 # Common dev aliases
-
-# Docker shortcuts
-alias docker-clean="docker system prune -af --volumes"
-alias docker-stop-all="docker stop \$(docker ps -aq)"
-alias dps="docker ps"
-alias dpsa="docker ps -a"
-alias di="docker images"
-alias dlogs="docker logs -f"
-alias dexec="docker exec -it"
 
 # Git shortcuts
 alias gs="git status"
@@ -1017,9 +1059,6 @@ alias myip="curl -s ifconfig.me"
 alias ll="ls -lah"
 alias la="ls -A"
 
-# Docker tools
-alias lazydocker='docker run --rm -it -v /var/run/docker.sock:/var/run/docker.sock -v ~/.config/lazydocker:/.config/jesseduffield/lazydocker lazyteam/lazydocker'
-alias lazygit='docker run --rm -it -v "$PWD:/repo" -v ~/.gitconfig:/root/.gitconfig:ro -w /repo lazyteam/lazygit'
 EOF
   
   append_if_missing "$bashrc" "# Common dev aliases" "$aliases_block"
@@ -1028,7 +1067,7 @@ EOF
 setup_shell_integrations() {
   log "Setting up shell integrations for user: $TARGET_USER"
   
-  local bashrc="/home/${TARGET_USER}/.bashrc"
+  local bashrc="${TARGET_HOME}/.bashrc"
   
   # FZF integration
   local fzf_block
@@ -1087,10 +1126,11 @@ EOF
 apply_user_tweaks() {
   user_bash_history_tweaks
   user_ssh_keepalive_config
-  setup_user_ssh_keys
-  configure_ssh_agent
   add_common_aliases
   setup_shell_integrations
+  if cmd_exists starship; then
+    append_if_missing "${TARGET_HOME}/.bashrc" 'starship init bash' 'eval "$(starship init bash)"'
+  fi
 }
 
 # =============================================================================
@@ -1099,7 +1139,6 @@ apply_user_tweaks() {
 
 apt_cleanup() {
   log "APT cleanup"
-  apt-get update -y || true
   apt-get autoremove --purge -y || true
   apt-get clean || true
   rm -rf /var/lib/apt/lists/* || true
@@ -1188,12 +1227,14 @@ user_cache_cleanup() {
 do_dev() {
   log "=== Installing Development Tools ==="
   apt_update
-  apt_dist_upgrade
   
   if [[ "$UPDATE_ONLY" -eq 1 ]]; then
     apt_upgrade
   else
     install_core_packages
+    if [[ "$DO_UPDATE" -eq 1 ]]; then
+      apt_upgrade
+    fi
   fi
   
   setup_git_lfs
@@ -1203,9 +1244,18 @@ do_dev() {
   install_or_update_docker
   install_or_update_hashicorp
   install_or_update_awscli
-  install_or_update_vscode
   install_or_update_github_cli
-  install_or_update_chrome
+  if [[ "$RESOLVED_PROFILE" == "desktop" ]]; then
+    case "$(dpkg --print-architecture)" in
+      amd64|arm64|armhf) install_or_update_vscode ;;
+      *) warn "VS Code package is unavailable for this architecture; skipping" ;;
+    esac
+    if [[ "$(dpkg --print-architecture)" == "amd64" ]]; then
+      install_or_update_chrome
+    else
+      warn "Google Chrome package is amd64-only here; skipping"
+    fi
+  fi
   
   success "Development tools installed"
 }
@@ -1218,59 +1268,34 @@ do_env() {
   set_ulimits
   disable_apport
   cap_journald
-  ensure_ssh_client
-  regenerate_ssh_host_keys
-  set_uk_locale
-  install_nerd_fonts
-  
-  # Auto-detect if desktop is already installed
-  local has_desktop=0
-  if pkg_installed ubuntu-desktop || pkg_installed gnome-shell || pkg_installed task-gnome-desktop; then
-    has_desktop=1
-    log "Desktop environment detected"
+  ensure_pkg sudo
+  if [[ "$APPLY_UK_SETTINGS" -eq 1 ]]; then
+    set_uk_locale
   fi
   
   if [[ "$INSTALL_GUI" -eq 1 ]]; then
     install_ubuntu_desktop
-    has_desktop=1
   fi
   
   if [[ "$CREATE_DEV_USER" -eq 1 ]]; then
     create_dev_user
   fi
   
-  # Apply desktop settings for dev user AFTER user is created
-  # Run if --gui passed OR if desktop was auto-detected
-  if [[ "$has_desktop" -eq 1 ]] && [[ "$CREATE_DEV_USER" -eq 1 ]]; then
-    apply_dev_user_desktop_settings
-  fi
-  
-  # Apply desktop tweaks if desktop exists (--gui or auto-detected)
-  if [[ "$has_desktop" -eq 1 ]] && [[ "$DO_DESKTOP" -eq 1 ]]; then
-    # Remove gnome-initial-setup
-    apt-get remove --autoremove -y gnome-initial-setup gnome-tour 2>/dev/null || true
-    
-    disable_lid_close_suspend
-    disable_screen_lock
+  if [[ "$RESOLVED_PROFILE" == "desktop" ]]; then
+    install_nerd_fonts
     disable_browser_first_run
+    if [[ "$CREATE_DEV_USER" -eq 1 ]]; then
+      install_dev_background
+    fi
   fi
   
   if [[ "$DO_USER_TWEAKS" -eq 1 ]]; then
     log "Applying user tweaks for: $TARGET_USER"
     apply_user_tweaks
-    
-    if [[ "$CREATE_DEV_USER" -eq 1 ]] && [[ "$TARGET_USER" != "dev" ]]; then
-      log "Applying user tweaks for: dev"
-      TARGET_USER="dev"
-      apply_user_tweaks
-    fi
   fi
-  
+
+  ensure_ssh_client
   success "System environment configured"
-  if [[ "$CREATE_DEV_USER" -eq 1 ]]; then
-    log "Dev user created - login: dev / password: dev"
-    warn "⚠️  IMPORTANT: Change the password! Run: sudo passwd dev"
-  fi
 }
 
 do_clean() {
@@ -1305,21 +1330,26 @@ do_update() {
 }
 
 do_all() {
-  # Detect re-run
   if [[ -f "$SETUP_MARKER" ]] && [[ "$FORCE_RERUN" -eq 0 ]]; then
-    warn "Setup has already been run on this system"
-    log "Marker file: $SETUP_MARKER"
-    echo ""
-    log "Options:"
-    log "  - Run 'update' command to update installed tools"
-    log "  - Use --force to re-run full setup (may regenerate SSH keys)"
-    log "  - Delete $SETUP_MARKER to reset"
-    echo ""
-    read -rp "Continue anyway? [y/N] " response
-    if [[ ! "$response" =~ ^[Yy]$ ]]; then
-      log "Aborted"
-      exit 0
+    if grep -Fxq "setup_schema=2" "$SETUP_MARKER" &&
+       grep -Fxq "profile=$RESOLVED_PROFILE" "$SETUP_MARKER" &&
+       grep -Fxq "requested_profile=$INSTALL_PROFILE" "$SETUP_MARKER" &&
+       grep -Fxq "install_gui=$INSTALL_GUI" "$SETUP_MARKER" &&
+       grep -Fxq "target=$TARGET_USER" "$SETUP_MARKER" &&
+       grep -Fxq "create_dev=$CREATE_DEV_USER" "$SETUP_MARKER" &&
+       grep -Fxq "ssh_server=$INSTALL_SSH_SERVER" "$SETUP_MARKER" &&
+       grep -Fxq "uk_settings=$APPLY_UK_SETTINGS" "$SETUP_MARKER" &&
+       grep -Fxq "user_tweaks=$DO_USER_TWEAKS" "$SETUP_MARKER" &&
+       [[ "$DO_UPDATE" -eq 0 ]]; then
+      log "Full setup already completed for this plan; refreshing Docker CE"
+      install_or_update_docker
+      if [[ "$REBOOT_AFTER" -eq 1 ]]; then
+        log "Rebooting as requested"
+        reboot
+      fi
+      return 0
     fi
+    log "Existing setup marker differs from this plan; applying requested setup"
   fi
   
   do_dev
@@ -1328,13 +1358,26 @@ do_all() {
   echo ""
   
   # Create marker file on successful completion
-  echo "Setup completed: $(date -Iseconds)" | tee "$SETUP_MARKER" >/dev/null
+  {
+    printf 'completed=%s\n' "$(date -Iseconds)"
+    printf 'setup_schema=2\n'
+    printf 'profile=%s\n' "$RESOLVED_PROFILE"
+    printf 'requested_profile=%s\n' "$INSTALL_PROFILE"
+    printf 'install_gui=%s\n' "$INSTALL_GUI"
+    printf 'target=%s\n' "$TARGET_USER"
+    printf 'create_dev=%s\n' "$CREATE_DEV_USER"
+    printf 'ssh_server=%s\n' "$INSTALL_SSH_SERVER"
+    printf 'uk_settings=%s\n' "$APPLY_UK_SETTINGS"
+    printf 'user_tweaks=%s\n' "$DO_USER_TWEAKS"
+  } > "$SETUP_MARKER"
   
   success "Full setup complete!"
-  log "System will reboot in 10 seconds to apply all changes..."
-  log "(Press Ctrl+C to cancel)"
-  sleep 10
-  reboot
+  if [[ "$REBOOT_AFTER" -eq 1 ]]; then
+    log "Rebooting to apply all changes"
+    reboot
+  else
+    log "Reboot when convenient to apply desktop changes"
+  fi
 }
 
 # =============================================================================
@@ -1343,18 +1386,22 @@ do_all() {
 
 main() {
   parse_args "$@"
+  validate_command_options
+  resolve_install_profile
+  resolve_target_user
   
   if [[ "$DRY_RUN" -eq 1 ]]; then
-    warn "DRY RUN MODE - would execute: $COMMAND"
+    warn "DRY RUN MODE - no changes will be made"
+    show_plan
     exit 0
   fi
   
   check_root
+  export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
   detect_distro
   
   log "Ubuntu Dev Box Setup"
-  log "Command: $COMMAND"
-  log "Target user: $TARGET_USER"
+  show_plan
   echo ""
   
   case "$COMMAND" in
@@ -1370,4 +1417,6 @@ main() {
   esac
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

@@ -1,130 +1,61 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
-# Example Vagrantfile for ubuntu-build
-# Provisions a fresh Ubuntu VM with the dev box setup
+# Copy this file to Vagrantfile in the repository root before running vagrant.
 #
-# Usage:
-#   vagrant up                      # Create and provision (uses VMware)
-#   vagrant up --provider=virtualbox  # Use VirtualBox instead
-#   vagrant ssh                     # Connect to VM
-#   vagrant provision               # Re-run provisioning
-#   vagrant destroy                 # Remove VM
+# Headless server (default): vagrant up --provider=virtualbox
+# Desktop VM: UBUNTU_BUILD_MODE=desktop vagrant up --provider=virtualbox
+# VMware or libvirt: use --provider=vmware_desktop or --provider=libvirt
+# To use another Ubuntu 24.04 box: UBUNTU_BUILD_BOX=owner/box vagrant up
+#
+# Run `UBUNTU_BUILD_MODE=desktop vagrant reload` after the first desktop
+# provision to start the new GUI. Pass the mode on later Vagrant commands too.
 
-# Set VMware as the default provider
-ENV['VAGRANT_DEFAULT_PROVIDER'] = 'vmware_desktop'
+mode = ENV.fetch("UBUNTU_BUILD_MODE", "headless")
+abort "UBUNTU_BUILD_MODE must be headless or desktop" unless %w[headless desktop].include?(mode)
+
+desktop = mode == "desktop"
+memory_mb = desktop ? 6144 : 4096
 
 Vagrant.configure("2") do |config|
-  # ==========================================================================
-  # Box Selection - Choose ONE
-  # ==========================================================================
-  
-  config.vm.box = "gusztavvargadr/ubuntu-desktop"
-  
-  # WITH GUI - Ubuntu Desktop pre-installed (larger download, but GUI ready)
-  # config.vm.box = "gusztavvargadr/ubuntu-desktop-2404-lts"
-  
-  # Alternative boxes:
-  # config.vm.box = "bento/ubuntu-24.04"                    # Headless 24.04
-  # config.vm.box = "bento/debian-12"                       # Headless Debian 12
-  # config.vm.box = "gusztavvargadr/ubuntu-desktop" # GUI 24.04
-  
-  config.vm.hostname = "devbox"
-  
-  # Network configuration (NAT is default - access via port forwarding)
-  # config.vm.network "private_network", type: "dhcp"  # Host-only network
-  # config.vm.network "public_network"                  # Bridged network
-  
-  # Forward common dev ports (uncomment as needed)
-  # config.vm.network "forwarded_port", guest: 3000, host: 3000  # Node.js
-  # config.vm.network "forwarded_port", guest: 5000, host: 5000  # Flask
-  # config.vm.network "forwarded_port", guest: 8000, host: 8000  # Django
-  # config.vm.network "forwarded_port", guest: 8080, host: 8080  # Alt HTTP
-  
-  # Synced folder (project directory)
-  config.vm.synced_folder ".", "/vagrant", disabled: false
-  # config.vm.synced_folder "~/projects", "/home/vagrant/projects"
-  
-  # VirtualBox provider settings
+  config.vm.box = ENV.fetch("UBUNTU_BUILD_BOX", "bento/ubuntu-24.04")
+  config.vm.hostname = "ubuntu-build"
+
+  # NAT and the default /vagrant synced folder are sufficient for provisioning.
+  # Forward an application port only when needed, for example:
+  # config.vm.network "forwarded_port", guest: 3000, host: 3000
+
   config.vm.provider "virtualbox" do |vb|
-    vb.name = "ubuntu-devbox"
-    vb.memory = 4096
+    vb.name = "ubuntu-build-#{mode}"
+    vb.memory = memory_mb
     vb.cpus = 2
-    
-    # Performance tweaks
-    vb.customize ["modifyvm", :id, "--ioapic", "on"]
-    vb.customize ["modifyvm", :id, "--natdnshostresolver1", "on"]
-    
-    # Enable nested virtualization (for Docker)
-    vb.customize ["modifyvm", :id, "--nested-hw-virt", "on"]
-    
-    # GUI (set to true for desktop)
-    vb.gui = false
+    vb.gui = desktop
   end
-  
-  # VMware provider settings (if using VMware)
+
   config.vm.provider "vmware_desktop" do |vmware|
-    vmware.vmx["memsize"] = "4096"
+    vmware.vmx["memsize"] = memory_mb.to_s
     vmware.vmx["numvcpus"] = "2"
-    vmware.vmx["vhv.enable"] = "TRUE"  # Nested virtualization
-    
-    # Always show VM in VMware Workstation
-    vmware.gui = true
+    vmware.gui = desktop
   end
-  
-  # Libvirt provider settings (Linux KVM)
+
   config.vm.provider "libvirt" do |libvirt|
-    libvirt.memory = 4096
+    libvirt.memory = memory_mb
     libvirt.cpus = 2
-    libvirt.nested = true
+    libvirt.graphics_type = "spice" if desktop
   end
 
-  # ==========================================================================
-  # Provisioning with ubuntu-build (setup-all.sh)
-  # ==========================================================================
-  
-  # Option 1: Direct bootstrap from GitHub (headless, creates dev user)
-  config.vm.provision "shell", inline: <<-SHELL
-    echo "==> Provisioning with ubuntu-build..."
-    curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/setup-all.sh | bash
-  SHELL
-  
-  # Option 2: With Ubuntu Desktop GUI (set vmware.gui = true above)
-  # config.vm.provision "shell", inline: <<-SHELL
-  #   curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/setup-all.sh | bash -s -- --gui
-  # SHELL
-  
-  # Option 3: Headless server (no desktop settings at all)
-  # config.vm.provision "shell", inline: <<-SHELL
-  #   curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/setup-all.sh | bash -s -- --no-desktop
-  # SHELL
-  
-  # Option 4: Dev tools only (skip env configuration)
-  # config.vm.provision "shell", inline: <<-SHELL
-  #   curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/setup-all.sh | bash -s -- dev
-  # SHELL
+  # Run the checked-out script from /vagrant so its wallpaper asset comes
+  # from the same revision. Vagrant runs shell provisioners as root.
+  config.vm.provision "shell",
+    inline: "bash /vagrant/setup-all.sh #{desktop ? '--desktop' : '--headless'}",
+    privileged: true
 
-  # ==========================================================================
-  # Post-provisioning message
-  # ==========================================================================
-  
   config.vm.post_up_message = <<-MSG
-
-  ╔═══════════════════════════════════════════════════════════════════╗
-  ║                    Ubuntu Dev Box Ready!                          ║
-  ╠═══════════════════════════════════════════════════════════════════╣
-  ║                                                                   ║
-  ║  Connect:     vagrant ssh                                         ║
-  ║  Dev user:    su - dev  (password: dev)                           ║
-  ║  IP Address:  vagrant ssh -c "hostname -I"                        ║
-  ║                                                                   ║
-  ║  Installed:   Docker, Terraform, Packer, AWS CLI, VS Code,        ║
-  ║               gh, fzf, zoxide, delta, Starship, and more          ║
-  ║                                                                   ║
-  ║  Note: The dev user has passwordless sudo and Docker access       ║
-  ║                                                                   ║
-  ╚═══════════════════════════════════════════════════════════════════╝
-
+    Ubuntu build VM is ready (#{mode}).
+    Connect with: vagrant ssh
+    Development account: su - dev (initial password: dev)
+    Change that password after provisioning: sudo passwd dev
+    If this was the first desktop provision, run:
+      UBUNTU_BUILD_MODE=desktop vagrant reload
   MSG
-
 end

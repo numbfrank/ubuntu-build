@@ -1,277 +1,132 @@
-# Ubuntu Dev Box Build Scripts
+# Ubuntu development VM and server setup
 
-A single script to set up Ubuntu/Debian development VMs (and WSL) with a modern engineering toolchain.
+`setup-all.sh` configures an Ubuntu or Debian development machine. It supports a GUI VM and a headless server with distinct package choices. It changes system packages and settings; take a backup or snapshot before applying it to an existing machine.
 
-## Quick Start
+## Choose an install
 
-**From the repo (run in repo root):**
 ```bash
-sudo bash setup-all.sh
+sudo apt-get update
+sudo apt-get install -y git
+git clone https://github.com/numbfrank/ubuntu-build.git
+cd ubuntu-build
 ```
 
-**One-liner (curl):**
+| Machine | Command | Result |
+| --- | --- | --- |
+| VM with a desktop already installed | `sudo bash setup-all.sh` | Detects GNOME and adds desktop tools and browser policies. |
+| Minimal VM that needs a desktop | `sudo bash setup-all.sh --desktop` | Installs GNOME and desktop tools supported on that architecture. |
+| Headless VM or server | `sudo bash setup-all.sh --headless` | Installs CLI development tools without GUI packages or desktop settings. |
+
+Run these commands from this repository's root directory. By default, the script creates and configures `dev` with the initial password `dev` on both desktop and headless machines. A full `all` run does not reboot automatically; reboot when convenient, or add `--reboot`.
+
+Review the resolved choices without changing the machine:
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/numbfrank/ubuntu-build/main/setup-all.sh | sudo bash
+bash setup-all.sh --headless --dry-run
 ```
 
-**Console/WSL only (no GUI):**
+### Default development account
+
+A newly created `dev` account receives password `dev` and normal sudo access through the `sudo` group. The script does not add a passwordless sudo rule. An existing `dev` account keeps its current password; the script adds it to the sudo group and removes the exact passwordless sudo rule written by older versions of this script, if present.
+
+Change the initial password immediately with `sudo passwd dev`. Add your SSH public key to `/home/dev/.ssh/authorized_keys` before remote login. Any SSH server that permits password login can expose the known `dev/dev` credential as soon as the account is created, including one already installed before this script runs. Keep network access restricted until you complete post-configuration. The `--ssh-server` option installs and enables OpenSSH without disabling password login.
+
+To configure the account invoking `sudo` instead, use `--current-user`. To target another existing account, use `--user NAME`. Both choices skip creating `dev`.
+
+## Profiles and options
+
+| Option | Effect |
+| --- | --- |
+| No profile flag | Auto-detect an installed GNOME desktop; otherwise use the headless profile. |
+| `--desktop` (`--gui`) | Select desktop routing. `all` or `env` installs GNOME; `all` or `dev` installs supported GUI tools. |
+| `--headless` (`--console`, `--no-desktop`) | Skip desktop installation, GUI applications, fonts, and desktop settings. |
+| `--current-user` (`--no-dev-user`) | Configure the account invoking `sudo` instead of creating `dev`. |
+| `--user NAME` | Apply user settings to this account. `--user dev` creates `dev` if necessary. |
+| `--dev-user` | Explicitly select the default `dev` account. |
+| `--no-user-tweaks` | Skip per-user shell and SSH configuration. |
+| `--uk-settings` | Set UK locale, keyboard, and timezone. |
+| `--ssh-server` | Install and enable OpenSSH server for remote access. |
+| `--reboot` | Reboot after a successful `all` run. |
+| `--force` (`-f`) | Repeat a completed `all` setup. |
+| `--dry-run` | Show the resolved command, profile, target user, and reboot choice. |
+
+Desktop and headless flags conflict; choose one. Headless mode skips GUI installation and configuration but does not uninstall an existing desktop.
+
+## Commands
+
+Pass a command before or after the flags. `all` is the default. `dev --desktop` installs desktop tools without installing GNOME; use `all --desktop` or `env --desktop` when GNOME is needed.
+
+| Command | Effect |
+| --- | --- |
+| `all` | Install tools and configure the system and selected user. |
+| `dev` | Install development tools only. |
+| `env` | Configure system and selected user only. |
+| `update` | Update installed tools. |
+| `clean` | Prepare a VM for capture as a reusable image. See below. |
+
+Examples:
+
 ```bash
-sudo bash setup-all.sh --console
+sudo bash setup-all.sh --headless --current-user
+sudo bash setup-all.sh dev --headless
+sudo bash setup-all.sh env --user alice
+sudo bash setup-all.sh update --headless
+sudo bash setup-all.sh --desktop --reboot
 ```
 
-**With Ubuntu Desktop GUI:**
-```bash
-sudo bash setup-all.sh --gui
-# or: curl -fsSL ... | sudo bash -s -- --gui
-```
+## Installed software and settings
 
-**Current user only (no dev user):**
-```bash
-sudo bash setup-all.sh --console --current-user
-```
+| Component | Headless | Desktop |
+| --- | --- | --- |
+| Build tools, Git, Python, tmux, CLI utilities, fzf, zoxide, Starship, and GitHub CLI | Yes | Yes |
+| git-delta | amd64 only | amd64 only |
+| Docker CE, Compose, and Buildx | Yes | Yes |
+| Terraform, Packer, and AWS CLI | Yes | Yes |
+| VS Code | No | amd64, arm64, armhf |
+| Google Chrome | No | amd64 only |
+| GNOME desktop (installed with `--desktop`, detected otherwise) | No | Yes |
+| Repository background for `dev` | No | Yes, on first GNOME login |
 
-Default run will:
-1. Install all development tools (Docker, Terraform, VS Code, etc.)
-2. Create a `dev` user with passwordless sudo (unless you use `--current-user` or `--user <name>`)
-3. Configure the system and apply shell customizations to the target user(s)
-4. (Optional with `--gui`) Install Ubuntu Desktop with dev as default user
+`all` and `dev` install the latest available Docker CE from Docker's official stable APT repository, with Compose and Buildx. `update` refreshes an installed Docker engine, and an identical `all` run refreshes Docker CE even when other setup is skipped. If distro `docker.io` is installed, the script checks all Docker CE package candidates before replacing it in one APT transaction. Migrating the engine can interrupt running containers; schedule the install accordingly.
 
----
+The environment step configures time sync, file watcher and file descriptor limits, and journald size. Locale, keyboard, and timezone are preserved unless you pass `--uk-settings`. The desktop profile installs Hack Nerd Font and sets browser first-run defaults. It applies the repository background to `dev` on the first GNOME login, whether GNOME was already installed or added with `--desktop`; other users keep their wallpaper.
 
-## ⚠️ Important: Dev User (optional)
+Per-user tweaks include Bash history, aliases, Git and shell integrations, and SSH client keepalive settings.
 
-By default the bootstrap creates a dedicated **`dev` user**. Use `--current-user` or `--user <name>` to set up only a specific user and skip creating `dev`.
+The script does not add users to the `docker` group, so a new installation normally needs `sudo` for Docker commands. If a trusted user needs Docker without `sudo`, follow the [Docker post-install steps](https://docs.docker.com/engine/install/linux-postinstall/); membership in the `docker` group grants root-level privileges.
 
-| Setting | Value |
-|---------|-------|
-| **Username** | `dev` |
-| **Password** | `dev` |
-| **Sudo** | Passwordless (`NOPASSWD:ALL`) |
-| **Groups** | `sudo`, `docker` |
-| **Shell** | `/bin/bash` with Starship prompt |
+## Reusable VM images
 
-### 🔐 Change the Password Immediately!
+`clean` removes logs, caches, user history, SSH host keys, and machine identity, then shuts the VM down by default. Use it only on an image you intend to capture, not on a running server you want to keep using. It leaves the `dev` password, SSH private keys, credentials, tokens, and project files in place; remove or replace secrets separately before sharing the image.
 
 ```bash
-# After setup, change the dev user password:
-sudo passwd dev
-
-# Or login as dev and change it:
-su - dev
-passwd
-```
-
-### Using the Dev User
-
-After setup, login as the `dev` user for development work:
-
-```bash
-# Switch to dev user
-su - dev
-
-# Or SSH directly (after adding your key)
-ssh dev@<hostname>
-
-# Or set as default login (desktop)
-sudo usermod -s /bin/bash dev
-```
-
-The `dev` user has:
-- All shell aliases pre-configured
-- SSH keys generated (Ed25519 + RSA)
-- SSH agent auto-start
-- fzf, zoxide, and delta integrations
-- Docker access without sudo
-
----
-
-## Options
-
-```bash
-# Full setup (creates dev user, applies to both current user and dev)
-sudo bash setup-all.sh
-
-# Console/WSL only
-sudo bash setup-all.sh --console
-
-# Current user only (no dev user)
-sudo bash setup-all.sh --console --current-user
-
-# Create dev user and apply config to dev only
-sudo bash setup-all.sh --dev-user
-
-# Apply config to a specific user only (no dev unless name is 'dev')
-sudo bash setup-all.sh env --user user
-sudo bash setup-all.sh --user user --force   # full re-run for user "user"
-
-# Full setup with GUI desktop
-sudo bash setup-all.sh --gui
-
-# Dev tools only (no system config)
-sudo bash setup-all.sh dev
-
-# Env/config only
-sudo bash setup-all.sh env
-
-# Prepare for imaging after setup
 sudo bash setup-all.sh clean
+# To inspect the completed VM before powering it off:
+sudo bash setup-all.sh clean --no-shutdown
 ```
 
-**Commands:**
-| Command | Description |
-|---------|-------------|
-| `all` | Run dev + env setup (default) |
-| `dev` | Install development tools only |
-| `env` | Apply system/user configuration only |
-| `clean` | Prepare system for imaging |
-| `update` | Update all installed tools |
-
-**Flags:**
-| Flag | Description |
-|------|-------------|
-| `--console` | Console/WSL only: no GUI, skip desktop settings |
-| `--gui` | Install Ubuntu Desktop / GNOME |
-| `--no-desktop` | Skip desktop-specific settings |
-| `--current-user` | Apply config to current user only (do not create dev user) |
-| `--dev-user` | Create dev user and apply config to dev only |
-| `--user NAME` | Apply config to NAME only (create dev only if NAME is `dev`) |
-| `--no-dev-user` | Don't create the dev user |
-| `--no-user-tweaks` | Skip per-user configurations |
-| `--force`, `-f` | Force re-run even if setup already completed |
-| `--no-shutdown` | Don't shutdown after clean |
-| `--dry-run` | Show what would run |
-
----
-
-## What Gets Installed
-
-### Development Tools
-
-| Category | Tools |
-|----------|-------|
-| **Core** | git, git-lfs, build-essential, python3, tmux, vim |
-| **CLI** | jq, ripgrep, fd, bat, fzf, htop, tree |
-| **Prompt** | Starship |
-| **Containers** | Docker Engine, Docker Compose, Buildx |
-| **IaC** | Terraform, Packer |
-| **Cloud** | AWS CLI v2 |
-| **Editors** | VS Code |
-| **Git Tools** | GitHub CLI (gh), git-delta |
-| **Navigation** | zoxide |
-| **Browser** | Google Chrome |
-
-### System Configuration
-
-**System Settings:**
-- NTP time sync
-- Increased inotify limits (for IDEs/watchers)
-- Higher nofile ulimits
-- Disabled apport crash popups
-- Capped journald disk usage
-- UK locale, keyboard, and timezone
-
-**Desktop Settings (with `--gui`):**
-- Installs Ubuntu Desktop / GNOME
-- Dock favorites: Terminal, VS Code, Chrome, Firefox, Settings
-- Disables lid-close suspend
-- Disables screen lock/timeout
-- Disables browser first-run prompts
-- Sets `dev` as default GDM login user
-
-**Dev User (created by default unless `--current-user` or `--user <other>`):**
-- Username: `dev`, Password: `dev`
-- Passwordless sudo
-- Member of `docker` group
-- All aliases and integrations pre-configured
-
-**User Tweaks (applied to target user(s)—see `--current-user`, `--dev-user`, `--user`):**
-- SSH key generation (Ed25519 + RSA)
-- SSH agent configuration
-- Bash history improvements
-- Shell aliases (Docker, Git, Terraform, system)
-- Shell integrations (fzf, zoxide, delta)
-
-### Image Cleanup (clean command)
-
-Prepares the system for imaging (golden image/VM template):
-
-- APT cache cleanup
-- Log truncation and journald vacuum
-- Temp directory cleanup
-- User history and cache removal
-- SSH host key removal (regenerated on first boot)
-- Machine-id reset
-
----
-
-## Shell Aliases
-
-After setup, these aliases are available for the `dev` user:
-
-**Docker:**
-```bash
-dps, dpsa, di, dlogs, dexec, docker-clean, docker-stop-all
-lazydocker, lazygit  # Run as containers
-```
-
-**Git:**
-```bash
-gs, gp, gc, gco, gb, gl, gd, gundo, gamend, gstash, gpop
-gupdate  # Fetch and rebase from origin/main
-gclean   # Cleanup merged branches + gc
-```
-
-**Terraform:**
-```bash
-tf, tfi, tfp, tfa, tfd
-```
-
-**System:**
-```bash
-ll, la, ports, listening, meminfo, diskinfo, cpuinfo, myip
-mkcd, take, extract, backup  # Utility functions
-```
-
----
-
-## Vagrant Quick Start
-
-See [docs/Vagrantfile.example](docs/Vagrantfile.example) for a ready-to-use Vagrantfile:
-
-```bash
-# Copy the example
-cp docs/Vagrantfile.example Vagrantfile
-
-# Start VM (provisions automatically)
-vagrant up
-
-# Connect as vagrant user
-vagrant ssh
-
-# Switch to dev user
-su - dev  # password: dev
-```
-
----
+See [Choosing a VM image](docs/VM-IMAGES.md) and the [Vagrant example](docs/Vagrantfile.example) for VM starting points.
 
 ## Requirements
 
-- Ubuntu 20.04+ or Debian 11+
-- sudo access
-- Internet connection
+- Ubuntu or Debian with `apt` and `systemd`
+- Root access through `sudo` or a root shell
+- Internet access to Ubuntu/Debian and third-party package repositories
 
----
+The script configures third-party package repositories and runs downloaded installers for Starship, zoxide, and AWS CLI as root. Review the script and those sources before using it on an existing machine. `bash setup-all.sh --help` lists every command and flag.
 
-## Security Checklist
+## Testing
 
-After running the bootstrap:
+Run the no-root option and profile-routing checks from the repository root:
 
-- [ ] Change the `dev` user password: `sudo passwd dev`
-- [ ] Add your SSH public key to `/home/dev/.ssh/authorized_keys`
-- [ ] Consider disabling password auth: `PasswordAuthentication no` in `/etc/ssh/sshd_config`
-- [ ] Review `/etc/sudoers.d/90-dev-nopasswd` if you want to restrict sudo
+```bash
+bash tests/test-options.sh
+bash tests/test-dispatch.sh
+bash tests/test-wallpaper.sh
+bash tests/test-dev-user.sh
+```
 
----
+These checks verify CLI validation, profile choices, Docker migration planning, dev account setup, and the wallpaper first-login script without installing packages.
 
 ## License
 

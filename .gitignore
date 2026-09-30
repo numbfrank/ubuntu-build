@@ -19,3 +19,7 @@
 # Local overrides (not committed)
 local/
 *.local.sh
+
+# Local Vagrant environment
+.vagrant/
+Vagrantfile
